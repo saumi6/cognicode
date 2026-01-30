@@ -1,0 +1,8 @@
+"""System-wide constants."""
+
+TAX_RATE = 0.10
+SHIPPING_FEE = 5.99
+FREE_SHIPPING_THRESHOLD = 50.00
+MAX_ITEMS_PER_CART = 20
+CURRENCY = "USD"
+ADMIN_EMAIL = "admin@example.com"

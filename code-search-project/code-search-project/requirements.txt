@@ -1,0 +1,9 @@
+transformers==4.40.0
+sentence-transformers==2.2.2
+faiss-cpu
+tree-sitter==0.20.4
+tree-sitter-languages==1.10.2
+torch  # Changed to a confirmed existing version
+numpy
+fastapi
+uvicorn
