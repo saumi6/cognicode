@@ -67,6 +67,7 @@ function runTests(filesToTest) {
     // Run commands separately so they don't block each other if one fails (unless user wants fail-fast)
     // Sending them as separate terminal lines ensures they run sequentially but independently
     filesToTest.forEach(file => {
+        // PowerShell requires '&' operator for quoted paths
         const cmd = `"${PYTHON_PATH}" "${TEST_SCRIPT_PATH}" "${file}"`;
         testTerminal.sendText(cmd); // Queue command
     });

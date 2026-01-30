@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: __init__
 Generated using: Groq LLM (openai/gpt-oss-20b)
-Generated on: 2026-01-30 23:26:15
+Generated on: 2026-01-31 01:03:08
 Source file: cart_item.py
 Function signature: def __init__(self, product: Product, quantity: int = 1)
 """

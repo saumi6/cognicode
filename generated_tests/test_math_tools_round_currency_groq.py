@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: round_currency
-Generated using: Groq LLM (openai/gpt-oss-20b)
-Generated on: 2026-01-30 22:18:18
+Generated using: Groq LLM (openai/gpt-oss-120b)
+Generated on: 2026-01-31 03:54:19
 Source file: math_tools.py
 Function signature: def round_currency(amount: float) -> float
 """
@@ -20,75 +20,72 @@ from test_repo.math_tools import round_currency
 
 import pytest
 
-# --------------------------------------------------------------------------- #
-# 1. Normal cases – typical values that should round cleanly
-# --------------------------------------------------------------------------- #
+# Import the function under test.
+# Replace `round_currency_module` with the actual module name where `round_currency` is defined.
+from round_currency_module import round_currency
+
+
 @pytest.mark.parametrize(
     "input_val, expected",
     [
-        (1.2345, 1.23),          # round down
-        (1.2355, 1.24),          # round up
-        (0.0, 0.0),              # zero
-        (123456.789, 123456.79), # large number
-        (-1.2345, -1.23),        # negative number
-        (2.5, 2.5),              # exact half
-        (2.5001, 2.5),           # just above half
-        (2.4999, 2.5),           # just below half
+        (0.0, 0.0),
+        (1.234, 1.23),
+        (1.235, 1.24),
+        (123.4567, 123.46),
+        (-2.555, -2.56),
+        (-2.554, -2.55),
+        (10.0, 10.0),
+        (99.999, 100.0),
     ],
 )
 def test_round_currency_normal_cases(input_val, expected):
     """
-    Test that round_currency correctly rounds typical floating‑point values
-    to two decimal places.
+    Test normal rounding behaviour for a variety of positive,
+    negative and zero values.
     """
     result = round_currency(input_val)
-    assert result == pytest.approx(expected)
+    # Use pytest.approx to avoid floatingpoint representation issues.
+    assert result == pytest.approx(expected, rel=1e-12)
 
 
-# --------------------------------------------------------------------------- #
-# 2. Edge cases – values near rounding thresholds and very large numbers
-# --------------------------------------------------------------------------- #
 def test_round_currency_edge_cases():
     """
-    Test boundary conditions such as values just below or above a rounding
-    threshold, and very large or very small numbers.
+    Test boundary and edge conditions such as very large numbers,
+    very small numbers, and the classic halfawayfromzero rounding cases.
     """
-    # Just below the threshold – should round down
-    assert round_currency(1.2349999) == pytest.approx(1.23)
+    # Very large number
+    large = 9_999_999_999.9999
+    assert round_currency(large) == pytest.approx(10_000_000_000.0, rel=1e-12)
 
-    # Just above the threshold – should round up
-    assert round_currency(1.2350001) == pytest.approx(1.24)
+    # Very small positive number (close to zero)
+    tiny_pos = 0.000_004_9
+    assert round_currency(tiny_pos) == pytest.approx(0.0, rel=1e-12)
 
-    # Large positive number with a small fractional part
-    assert round_currency(1e10 + 0.005) == pytest.approx(1e10 + 0.01)
+    # Very small negative number (close to zero)
+    tiny_neg = -0.000_004_9
+    assert round_currency(tiny_neg) == pytest.approx(-0.0, rel=1e-12)
 
-    # Large negative number with a small fractional part
-    assert round_currency(-1e10 - 0.0049) == pytest.approx(-1e10)
-
-    # Very small positive number
-    assert round_currency(0.0004) == pytest.approx(0.0)
-
-    # Very small negative number
-    assert round_currency(-0.0004) == pytest.approx(0.0)
+    # Halfway cases (banker's rounding is not required by the spec,
+    # we just verify the typical roundhalfup behaviour)
+    assert round_currency(2.345) == pytest.approx(2.35, rel=1e-12)
+    assert round_currency(2.344) == pytest.approx(2.34, rel=1e-12)
+    assert round_currency(-2.345) == pytest.approx(-2.35, rel=1e-12)
+    assert round_currency(-2.344) == pytest.approx(-2.34, rel=1e-12)
 
 
-# --------------------------------------------------------------------------- #
-# 3. Error cases – invalid inputs that should raise ValueError
-# --------------------------------------------------------------------------- #
 @pytest.mark.parametrize(
-    "invalid_input",
+    "bad_input, exc_type",
     [
-        None,
-        "string",
-        [1, 2],
-        {"a": 1},
-        (1, 2),
-        set([1, 2]),
+        (None, TypeError),
+        ("123.45", TypeError),
+        (["1.23"], TypeError),
+        ({'amount': 1.23}, TypeError),
+        (complex(1, 2), TypeError),
     ],
 )
-def test_round_currency_error_cases(invalid_input):
+def test_round_currency_error_cases(bad_input, exc_type):
     """
-    Test that round_currency raises ValueError when given an invalid input type.
+    Ensure that nonnumeric inputs raise the appropriate exception.
     """
-    with pytest.raises(ValueError):
-        round_currency(invalid_input)
+    with pytest.raises(exc_type):
+        round_currency(bad_input)

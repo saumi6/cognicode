@@ -13,6 +13,9 @@
             --text-color: #c9d1d9;
             --accent-color: #58a6ff;
             --border-color: #30363d;
+            --success-color: #238636;
+            --failure-color: #da3633;
+            --unknown-color: #58a6ff;
         }
 
         body {
@@ -26,13 +29,18 @@
         }
 
         #sidebar {
-            width: 300px;
+            width: 400px;
+            /* Wider sidebar as requested */
+            flex-shrink: 0;
+            /* Prevent resizing */
             background-color: var(--sidebar-color);
             border-right: 1px solid var(--border-color);
             padding: 20px;
             display: flex;
             flex-direction: column;
             z-index: 10;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+            overflow-y: auto;
         }
 
         #graph-container {
@@ -53,8 +61,23 @@
             width: 10px;
             height: 10px;
             border-radius: 50%;
-            background-color: #238636;
-            box-shadow: 0 0 5px #238636;
+            background-color: var(--success-color);
+            box-shadow: 0 0 5px var(--success-color);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+
+            100% {
+                opacity: 1;
+            }
         }
 
         .card {
@@ -76,13 +99,27 @@
             color: #8b949e;
         }
 
-        #node-details {
-            opacity: 0.5;
-            transition: opacity 0.2s;
+        #search-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: var(--sidebar-color);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            min-width: 300px;
         }
 
-        #node-details.active {
-            opacity: 1;
+        #search-container h3 {
+            margin: 0 0 10px 0;
+            font-size: 0.9rem;
+            color: var(--accent-color);
+        }
+
+        #node-details {
+            transition: opacity 0.2s;
         }
 
         button {
@@ -94,10 +131,47 @@
             cursor: pointer;
             font-weight: 600;
             width: 100%;
+            margin-top: 10px;
         }
 
         button:hover {
             background-color: #2ea043;
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        .run-test-btn {
+            background-color: #1f6feb;
+        }
+
+        .run-test-btn:hover {
+            background-color: #388bfd;
+        }
+
+        .log-entry {
+            font-size: 0.8rem;
+            border-bottom: 1px solid var(--border-color);
+            padding: 5px 0;
+        }
+
+        .log-pass {
+            color: var(--success-color);
+        }
+
+        .log-fail {
+            color: var(--failure-color);
+        }
+
+        #test-status-indicator {
+            padding: 5px 10px;
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 10px;
+            display: none;
         }
     </style>
 </head>
@@ -107,85 +181,365 @@
     <div id="sidebar">
         <h1>
             <div class="status-dot"></div>
-            Cognicode
+            Cognicode Control Center
         </h1>
 
         <div class="card">
             <div class="metric" id="node-count">-</div>
-            <div class="metric-label">Total Files</div>
+            <div class="metric-label">Tracked Files</div>
         </div>
 
         <div class="card" id="node-details">
             <h3>Selected Module</h3>
-            <p id="selected-name" style="color: #8b949e; font-style: italic;">Hover over a node</p>
-            <p id="selected-path" style="font-size: 0.8rem; word-break: break-all;"></p>
+            <p id="selected-name" style="color: #8b949e; font-style: italic;">Click a node to manage</p>
+            <p id="selected-path" style="font-size: 0.75rem; word-break: break-all; color: #8b949e;"></p>
+
+            <div id="test-status-indicator"></div>
+
+            <button id="run-test-btn" class="run-test-btn" style="display: none;" onclick="triggerTest()">
+                ▶ Run Tests
+            </button>
+        </div>
+
+
+        <div class="card">
+            <h3>Terminal Output <button onclick="popoutTerminal()" style="float: right; font-size: 0.7rem;">🗖
+                    Pop-out</button></h3>
+            <div id="terminal-output"
+                style="background-color: #000; color: #0f0; font-family: monospace; padding: 10px; height: 300px; overflow-y: auto; border-radius: 4px; font-size: 0.8rem; white-space: pre-wrap;">
+                Click "Run Tests" to see output here...
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Recent Activity</h3>
+            <div id="activity-log" style="max-height: 200px; overflow-y: auto;">
+                <div class="log-entry">Waiting for activity...</div>
+            </div>
         </div>
 
         <div style="margin-top: auto;">
-            <button onclick="fetchGraph()">Refresh Graph</button>
+            <button onclick="forceRefresh()">Force Refresh Graph</button>
         </div>
     </div>
 
     <div id="graph-container"></div>
 
+    <!-- Fixed Search Box -->
+    <div id="search-container">
+        <h3>🔍 Search Nodes</h3>
+        <input type="text" id="search-box" placeholder="Type to search..."
+            style="width: calc(100% - 16px); padding: 8px; background: #000; color: #0f0; border: 1px solid #30363d; border-radius: 4px; font-family: monospace; font-size: 0.85rem; box-sizing: border-box;" />
+        <div id="search-results" style="max-height: 150px; overflow-y: auto; margin-top: 8px; font-size: 0.8rem;"></div>
+    </div>
+
     <script>
         const API_URL = "http://localhost:8000";
+        const WS_URL = "ws://localhost:8000/ws/run"; // WebSocket base URL
         let Graph = null;
+        let selectedNode = null;
+        let graphData = { nodes: [], links: [] };
 
-        async function fetchGraph() {
+        // --- Search Logic ---
+        function searchNodes() {
+            const query = document.getElementById('search-box').value.toLowerCase();
+            const results = graphData.nodes.filter(n => n.id.toLowerCase().includes(query));
+            const resultsDiv = document.getElementById('search-results');
+
+            if (!query) {
+                resultsDiv.innerHTML = '';
+                return;
+            }
+
+            if (results.length === 0) {
+                resultsDiv.innerHTML = '<div style="color: #da3633;">No matches</div>';
+                return;
+            }
+
+            resultsDiv.innerHTML = results.slice(0, 5).map(n =>
+                `<div onclick="focusNode('${n.id}')" style="cursor: pointer; padding: 4px; border-bottom: 1px solid #30363d; color: #58a6ff;">→ ${n.id}</div>`
+            ).join('');
+        }
+
+        function focusNode(nodeId) {
+            const node = graphData.nodes.find(n => n.id === nodeId);
+            if (node && Graph) {
+                Graph.centerAt(node.x, node.y, 1000);
+                Graph.zoom(3, 1000);
+                selectNode(node);
+            }
+        }
+
+        function selectNode(node) {
+            selectedNode = node;
+            document.getElementById('selected-name').innerText = node.id;
+            document.getElementById('selected-name').style.fontStyle = 'normal';
+            document.getElementById('selected-name').style.color = '#c9d1d9';
+            document.getElementById('selected-path').innerText = node.path || '';
+            document.getElementById('run-test-btn').style.display = 'block';
+
+            const statusElem = document.getElementById('test-status-indicator');
+            if (node.status === "PASSED") {
+                statusElem.innerText = "Status: PASSED";
+                statusElem.style.backgroundColor = "var(--success-color)";
+                statusElem.style.display = 'block';
+            } else if (node.status === "FAILED") {
+                statusElem.innerText = "Status: FAILED";
+                statusElem.style.backgroundColor = "var(--failure-color)";
+                statusElem.style.display = 'block';
+            } else {
+                statusElem.style.display = 'none';
+            }
+        }
+
+        document.getElementById('search-box')?.addEventListener('input', searchNodes);
+
+        function popoutTerminal() {
+            const term = document.getElementById('terminal-output');
+            const win = window.open('', 'Terminal', 'width=800,height=600');
+            win.document.write(`
+                <html>
+                <head><title>CogniCode Terminal</title>
+                <style>body{margin:0;background:#000;color:#0f0;font-family:monospace;padding:20px;white-space:pre-wrap;overflow-y:auto;}</style>
+                </head>
+                <body id="term-body">${term.innerHTML}</body>
+                </html>
+            `);
+            const observer = new MutationObserver(() => {
+                if (win && !win.closed) {
+                    win.document.getElementById('term-body').innerHTML = term.innerHTML;
+                    win.document.getElementById('term-body').scrollTop = 9999999;
+                }
+            });
+            observer.observe(term, { childList: true, subtree: true, characterData: true });
+        }
+
+        // --- Refresh Logic ---
+
+        async function fetchGraph(isManual = false) {
             try {
                 const response = await fetch(`${API_URL}/graph`);
                 const data = await response.json();
 
+                graphData = data;
                 document.getElementById('node-count').innerText = data.nodes.length;
-                renderGraph(data);
+
+                // CRITICAL: Only render if graph doesn't exist OR manual refresh
+                // Otherwise just update node colors WITHOUT retriggering physics
+                if (!Graph || isManual) {
+                    renderGraph(data);
+                } else {
+                    // Update colors only, preserve positions
+                    updateNodeColors(data);
+                }
+                updateActivityLog();
             } catch (error) {
                 console.error("Error fetching graph:", error);
-                document.getElementById('node-count').innerText = "Err";
             }
+        }
+
+        function updateNodeColors(data) {
+            // Update only the status/color without re-rendering
+            data.nodes.forEach(newNode => {
+                const existingNode = graphData.nodes.find(n => n.id === newNode.id);
+                if (existingNode) {
+                    existingNode.status = newNode.status;
+                }
+            });
+            Graph.nodeColor(Graph.nodeColor()); // Trigger re-render of colors
         }
 
         function renderGraph(data) {
             const elem = document.getElementById('graph-container');
-            elem.innerHTML = ''; // Clear previous
 
+            // Init Graph (should only happen once)
             Graph = ForceGraph()(elem)
                 .graphData(data)
                 .backgroundColor('#0d1117')
                 .nodeId('id')
                 .nodeLabel('id')
-                .nodeColor(node => node.status === 'changed' ? '#f85149' : '#58a6ff')
-                .nodeVal(node => 5)
+                // FIXED node size - must be constant
+                .nodeRelSize(4)  // Use nodeRelSize instead of nodeVal for consistent sizing
+                .nodeVal(1)       // Set base value to 1
+                // Color coding logic
+                .nodeColor(node => {
+                    if (node.status === 'PASSED') return '#238636'; // Green
+                    if (node.status === 'FAILED') return '#da3633'; // Red
+                    return '#58a6ff'; // Blue (Unknown)
+                })
                 .linkColor(() => '#30363d')
+                // Thicker links
+                .linkWidth(2)
                 .linkDirectionalParticles(2)
                 .linkDirectionalParticleWidth(2)
-                .onNodeHover(node => {
-                    const details = document.getElementById('node-details');
-                    const name = document.getElementById('selected-name');
-                    const path = document.getElementById('selected-path');
+                .onNodeClick(node => {
+                    selectedNode = node;
+                    document.getElementById('selected-name').innerText = node.id;
+                    document.getElementById('selected-name').style.fontStyle = 'normal';
+                    document.getElementById('selected-name').style.color = '#c9d1d9';
+                    document.getElementById('selected-path').innerText = node.path || '';
+                    document.getElementById('run-test-btn').style.display = 'block';
 
-                    if (node) {
-                        details.classList.add('active');
-                        name.innerText = node.id;
-                        name.style.color = '#c9d1d9';
-                        name.style.fontStyle = 'normal';
-                        path.innerText = node.path || '';
+                    const statusElem = document.getElementById('test-status-indicator');
+                    if (node.status === "PASSED") {
+                        statusElem.innerText = "Status: PASSED";
+                        statusElem.style.backgroundColor = "var(--success-color)";
+                        statusElem.style.display = 'block';
+                    } else if (node.status === "FAILED") {
+                        statusElem.innerText = "Status: FAILED";
+                        statusElem.style.backgroundColor = "var(--failure-color)";
+                        statusElem.style.display = 'block';
                     } else {
-                        details.classList.remove('active');
-                        name.innerText = "Hover over a node";
-                        name.style.color = '#8b949e';
-                        name.style.fontStyle = 'italic';
-                        path.innerText = "";
+                        statusElem.style.display = 'none';
                     }
+
+                    // Zoom to node
+                    Graph.centerAt(node.x, node.y, 1000);
+                    Graph.zoom(2, 1000);
+                })
+                .onBackgroundClick(() => {
+                    selectedNode = null;
+                    updateSidebar(null);
                 });
+
+            // CRITICAL: Completely disable physics simulation after 3 seconds to freeze graph
+            setTimeout(() => {
+                if (Graph) {
+                    Graph.d3Force('charge', null);
+                    Graph.d3Force('link', null);
+                    Graph.d3Force('center', null);
+                    Graph.d3AlphaTarget(0);
+                }
+            }, 3000);
         }
 
-        // Initial load
+        // --- UI Updates ---
+
+        function updateSidebar(node) {
+            const nameEl = document.getElementById('selected-name');
+            const pathEl = document.getElementById('selected-path');
+            const btn = document.getElementById('run-test-btn');
+            const statusEl = document.getElementById('test-status-indicator');
+
+            if (node) {
+                nameEl.innerText = node.id;
+                nameEl.style.color = '#c9d1d9';
+                nameEl.style.fontStyle = 'normal';
+
+                // Clean up path display
+                let cleanPath = node.path || node.id;
+                if (cleanPath.includes('test_repo')) cleanPath = '...' + cleanPath.split('test_repo')[1];
+                pathEl.innerText = cleanPath;
+
+                btn.style.display = 'block';
+
+                // Show status
+                statusEl.style.display = 'block';
+                if (node.status === 'PASSED') {
+                    statusEl.innerText = "TESTS PASSED";
+                    statusEl.style.backgroundColor = '#238636';
+                } else if (node.status === 'FAILED') {
+                    statusEl.innerText = "TESTS FAILED";
+                    statusEl.style.backgroundColor = '#da3633';
+                } else {
+                    statusEl.innerText = "NO DATA";
+                    statusEl.style.backgroundColor = '#6e7681';
+                }
+
+            } else {
+                nameEl.innerText = "Click a node to manage";
+                nameEl.style.color = '#8b949e';
+                nameEl.style.fontStyle = 'italic';
+                pathEl.innerText = "";
+                btn.style.display = 'none';
+                statusEl.style.display = 'none';
+            }
+        }
+
+        async function updateActivityLog() {
+            try {
+                const res = await fetch(`${API_URL}/tests/history`);
+                const history = await res.json();
+
+                const logContainer = document.getElementById('activity-log');
+                if (history.length === 0) return;
+
+                logContainer.innerHTML = '';
+                history.slice(0, 10).forEach(entry => {
+                    const div = document.createElement('div');
+                    div.className = 'log-entry';
+                    const time = new Date(entry.timestamp * 1000).toLocaleTimeString();
+                    const statusClass = entry.status === 'PASSED' ? 'log-pass' : 'log-fail';
+                    const file = entry.file_path.split('\\').pop().split('/').pop();
+
+                    div.innerHTML = `<span style="color: #8b949e">[${time}]</span> ${file}: <span class="${statusClass}"><b>${entry.status}</b></span>`;
+                    logContainer.appendChild(div);
+                });
+            } catch (e) {
+                console.error("Log fetch error", e);
+            }
+        }
+
+        // --- Interactivity ---
+
+        function triggerTest() {
+            if (!selectedNode) return;
+
+            const btn = document.getElementById('run-test-btn');
+            const term = document.getElementById('terminal-output');
+
+            btn.disabled = true;
+            btn.innerText = "⏳ Connecting...";
+            term.innerHTML = ""; // Clear terminal
+
+            const ws = new WebSocket(`${WS_URL}/${selectedNode.id}`);
+
+            ws.onopen = () => {
+                btn.innerText = "⏹ Running...";
+                term.innerHTML += "<span style='color: #58a6ff'>Connected to Test Runner...</span>\n";
+            };
+
+            ws.onmessage = (event) => {
+                // Determine color based on content
+                let color = "inherit";
+                if (event.data.includes("PASSED")) color = "#238636";
+                if (event.data.includes("FAILED") || event.data.includes("Error") || event.data.includes("ERR:")) color = "#da3633";
+
+                term.innerHTML += `<span style='color: ${color}'>${event.data}</span>`;
+                term.scrollTop = term.scrollHeight; // Auto scroll
+            };
+
+            ws.onclose = () => {
+                btn.disabled = false;
+                btn.innerText = "▶ Run Tests";
+                term.innerHTML += "\n<span style='color: #8b949e'>[Connection Closed]</span>";
+
+                // Refresh graph to show new status
+                setTimeout(() => fetchGraph(true), 1000);
+            };
+
+            ws.onerror = (error) => {
+                term.innerHTML += `\n<span style='color: #da3633'>[WebSocket Error]</span>`;
+                btn.disabled = false;
+                btn.innerText = "▶ Run Tests";
+            };
+        }
+
+        function forceRefresh() {
+            fetchGraph(true);
+        }
+
+        // --- Init ---
+
         window.addEventListener('resize', () => {
             if (Graph) Graph.width(document.getElementById('graph-container').clientWidth);
         });
 
         fetchGraph();
+
+        // Poll every 2 seconds
+        setInterval(() => fetchGraph(), 2000);
+
     </script>
 </body>
 

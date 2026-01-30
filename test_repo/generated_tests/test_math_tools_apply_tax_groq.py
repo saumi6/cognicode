@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: apply_tax
-Generated using: Groq LLM (openai/gpt-oss-20b)
-Generated on: 2026-01-30 23:25:55
+Generated using: Groq LLM (openai/gpt-oss-120b)
+Generated on: 2026-01-31 04:07:52
 Source file: math_tools.py
 Function signature: def apply_tax(amount: float) -> float
 """
@@ -20,73 +20,69 @@ from test_repo.math_tools import apply_tax
 
 import pytest
 
-# NOTE: The tests assume that the function `apply_tax` is available in the
-# current namespace (e.g. it has been imported by the test runner or is
-# defined in the same file).  If the function lives in a module named
-# `tax_module`, you can replace the calls with
-# `from tax_module import apply_tax` at the top of this file.
+# The function under test is assumed to be importable directly in the test module,
+# e.g. `from my_module import apply_tax`.  The import itself is handled elsewhere,
+# so we only reference the name here.
+
 
 @pytest.mark.parametrize(
     "amount, expected",
     [
-        (0.0, 0.0),          # zero amount
-        (100.0, 110.0),      # typical case  10% tax
-        (50.5, 55.55),       # noninteger amount
-        (123.45, 135.795),   # another decimal amount
+        (100.0, 120.0),          # typical positive amount (20% tax)
+        (0.0, 0.0),              # zero amount should stay zero
+        (50, 60.0),              # integer input, tax applied
+        (1_000_000.0, 1_200_000.0),  # large amount
+        (0.01, 0.012),           # small amount, still taxed
     ],
 )
-def test_apply_tax_normal_cases(amount: float, expected: float):
+def test_apply_tax_normal_cases(amount, expected):
     """
-    Test that `apply_tax` returns the expected total for a variety of
-    normal input amounts.  The expected values are calculated assuming a
-    10% tax rate (i.e. `amount * 1.10`).
+    Test normal, expected behaviour of ``apply_tax`` with a variety of
+    typical inputs.  The function is assumed to apply a 20% tax, so the
+    expected result is ``amount * 1.20``.
     """
     result = apply_tax(amount)
+    # Use ``pytest.approx`` to avoid floatingpoint precision issues.
     assert result == pytest.approx(expected, rel=1e-9)
 
 
 def test_apply_tax_edge_cases():
     """
-    Test boundary conditions and edge cases:
-    * Very small amounts (close to zero)
-    * Very large amounts
-    * The result should always be greater than or equal to the input amount.
+    Test boundary and edgecase values such as very small, very large,
+    and zero amounts.  The tax rate is still assumed to be 20%.
     """
-    # Very small amount
-    small_amount = 1e-10
-    small_result = apply_tax(small_amount)
-    assert small_result >= small_amount
-    assert small_result == pytest.approx(small_amount * 1.10, rel=1e-9)
+    # Zero amount  should remain zero.
+    assert apply_tax(0.0) == pytest.approx(0.0)
 
-    # Very large amount
-    large_amount = 1e12
-    large_result = apply_tax(large_amount)
-    assert large_result >= large_amount
-    assert large_result == pytest.approx(large_amount * 1.10, rel=1e-9)
+    # Very small positive amount.
+    tiny = 1e-12
+    assert apply_tax(tiny) == pytest.approx(tiny * 1.20, rel=1e-9)
 
-    # Zero amount (already covered in normal cases but repeated here for completeness)
-    zero_result = apply_tax(0.0)
-    assert zero_result == 0.0
+    # Very large amount (close to float max but still safe).
+    huge = 1e+20
+    assert apply_tax(huge) == pytest.approx(huge * 1.20, rel=1e-9)
 
 
 def test_apply_tax_error_cases():
     """
-    Test that `apply_tax` raises appropriate exceptions for invalid inputs:
-    * Negative amounts should raise ValueError
-    * Nonnumeric inputs (None, string, list) should raise TypeError
+    Verify that ``apply_tax`` raises appropriate exceptions for invalid
+    inputs such as negative numbers or nonnumeric types.
     """
-    # Negative amount
+    # Negative amounts are not allowed.
     with pytest.raises(ValueError):
         apply_tax(-10.0)
 
-    # None input
-    with pytest.raises(TypeError):
-        apply_tax(None)
-
-    # String input
+    # Passing a string should raise a TypeError (or ValueError depending on impl).
     with pytest.raises(TypeError):
         apply_tax("100")
 
-    # List input
+    # ``None`` is also invalid.
     with pytest.raises(TypeError):
-        apply_tax([100])
+        apply_tax(None)
+These three test functions cover:
+
+1. **Normal cases**  a range of typical positive amounts using `@pytest.mark.parametrize`.
+2. **Edge cases**  boundary values like zero, extremely small, and extremely large numbers.
+3. **Error cases**  invalid inputs that should trigger exceptions (`ValueError` for negatives, `TypeError` for nonnumeric data).
+
+Floatingpoint results are compared with `pytest.approx` to handle precision safely. No external modules are imported beyond `pytest`, satisfying the given constraints.

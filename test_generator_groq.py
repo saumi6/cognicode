@@ -158,9 +158,11 @@ Generate complete, executable test functions:"""
     
     def _clean_generated_code(self, code: str, target_function_name: str) -> str:
         """Clean up the generated code."""
-        # Remove code block markers
-        code = re.sub(r'```python\s*', '', code)
-        code = re.sub(r'```\s*$', '', code)
+        # AGGRESSIVE: Remove ALL code block markers (beginning, middle, end)
+        # Strip ``` at start of lines, end of lines, anywhere
+        code = re.sub(r'```python\s*', '', code, flags=re.MULTILINE)
+        code = re.sub(r'```\s*', '', code, flags=re.MULTILINE)
+        code = re.sub(r'^\s*```.*$', '', code, flags=re.MULTILINE)
         
         # Remove duplicate imports and comments
         # Also sanitize for weird unicode characters (like non-breaking hyphens)
@@ -168,15 +170,32 @@ Generate complete, executable test functions:"""
         
         lines = code.split('\n')
         cleaned_lines = []
+        in_function = False
         
         for line in lines:
             stripped = line.strip()
             # Skip empty lines at start
             if not stripped and not cleaned_lines:
                 continue
+            # Skip lines that are JUST backticks (markdown artifacts)
+            if stripped == '```' or stripped == '```python':
+                continue
             # Skip duplicate imports
             if stripped.startswith('import pytest') and any('import pytest' in cl for cl in cleaned_lines):
                 continue
+            
+            # CRITICAL: Skip explanatory prose that Groq adds (not valid Python)
+            # These lines usually start with capital letters and have no colons/equals
+            # BUT allow docstrings, comments, and actual code
+            if stripped and not stripped.startswith(('#', '@', 'def ', 'class ', 'import ', 'from ', 'if ', 'elif ', 'else:', 'for ', 'while ', 'try:', 'except', 'with ', 'return ', 'assert ', 'raise ', 'pass', 'break', 'continue', '"""', "'''")):
+                # Check if it's a statement line (contains = or ( or [ or starts with known keywords)
+                if not any(char in stripped for char in ['=', '(', '[', ':']):
+                    # Likely explanatory text, skip it
+                    if not any(stripped.startswith(kw) for kw in ['These', 'This', 'The', 'Note', 'Here', 'Example', 'In']):
+                        pass  # Allow other lines
+                    else:
+                        continue  # Skip explanatory lines
+            
             cleaned_lines.append(line)
         
         return '\n'.join(cleaned_lines).strip()

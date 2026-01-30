@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: calculate_total
-Generated using: Groq LLM (openai/gpt-oss-20b)
-Generated on: 2026-01-30 23:26:48
+Generated using: Groq LLM (openai/gpt-oss-120b)
+Generated on: 2026-01-31 04:08:12
 Source file: price_calculator.py
 Function signature: def calculate_total(self, cart: CartManager, discount_percent: float = 0)
 """
@@ -21,125 +21,165 @@ from test_repo.price_calculator import PriceCalculator
 import pytest
 from unittest.mock import MagicMock
 
-# Assume the module containing PriceCalculator is named `price_calculator`.
-# The following imports are only for type checking and will be resolved
-# by the test runner when the module is available.
-try:
-    from price_calculator import PriceCalculator
-except Exception:
-    # If the module cannot be imported, define a minimal stub for the
-    # purpose of type checking. The real implementation will be
-    # provided by the user during test execution.
-    class PriceCalculator:
-        def calculate_total(self, cart, discount_percent=0):
-            pass
+# The module that contains PriceCalculator is assumed to be named ``price_calculator``.
+# Adjust the import path if the actual file name differs.
+from price_calculator import PriceCalculator
 
 
 @pytest.mark.parametrize(
-    "subtotal, discount_percent, qualifies_free_shipping, expected_total",
+    "subtotal, discount_percent, tax_rate, free_shipping, expected_total",
     [
-        # No discount, no free shipping
-        (100.0, 0, False, 100.0 * 1.1 + 5),
-        # 10% discount, no free shipping
-        (200.0, 10, False, (200.0 * 0.9) * 1.1 + 5),
-        # 20% discount, free shipping
-        (150.0, 20, True, (150.0 * 0.8) * 1.1),
-        # 0% discount, free shipping
-        (50.0, 0, True, 50.0 * 1.1),
-        # 100% discount, no free shipping
-        (80.0, 100, False, 0.0 * 1.1 + 5),
+        # No discount, tax 10%, free shipping
+        (100.0, 0, 0.10, True, 110.0),
+        # 10% discount, tax 5%, shipping fee applied
+        (200.0, 10, 0.05, False,  (200.0 * 0.90) * 1.05 + 5.0),
+        # 25% discount, tax 0%, free shipping
+        (80.0, 25, 0.0, True, 80.0 * 0.75),
+        # No discount, tax 0%, shipping fee applied
+        (50.0, 0, 0.0, False, 50.0 + 5.0),
     ],
 )
 def test_calculate_total_normal_cases(
-    subtotal, discount_percent, qualifies_free_shipping, expected_total, monkeypatch
+    monkeypatch,
+    subtotal,
+    discount_percent,
+    tax_rate,
+    free_shipping,
+    expected_total,
 ):
-    """
-    Test normal operation of `calculate_total` with a variety of
-    subtotal amounts, discount percentages, and shipping eligibility.
-    """
-    # Patch the external dependencies used by PriceCalculator
-    monkeypatch.setattr("price_calculator.calculate_discount", lambda s, d: s * (1 - d / 100))
-    monkeypatch.setattr("price_calculator.apply_tax", lambda s: s * 1.1)
-    monkeypatch.setattr("price_calculator.SHRIPPING_FEE", 5)
+    """Normal operation with various combinations of discount, tax and shipping."""
+    # ----------------------------------------------------------------------
+    # Arrange  mock the external helpers and the CartManager dependency
+    # ----------------------------------------------------------------------
+    # Mock ``calculate_discount`` to apply a simple percentage reduction.
+    def fake_calculate_discount(amount, percent):
+        return amount * (1 - percent / 100)
 
-    # Create a mock CartManager
+    # Mock ``apply_tax`` to apply a configurable tax rate.
+    def fake_apply_tax(amount):
+        return amount * (1 + tax_rate)
+
+    # Patch the helpers using the **full absolute import path**.
+    monkeypatch.setattr("price_calculator.calculate_discount", fake_calculate_discount)
+    monkeypatch.setattr("price_calculator.apply_tax", fake_apply_tax)
+
+    # Mock the CartManager instance.
     cart = MagicMock()
     cart.get_subtotal.return_value = subtotal
-    cart.qualifies_for_free_shipping.return_value = qualifies_free_shipping
+    cart.qualifies_for_free_shipping.return_value = free_shipping
 
-    # Instantiate the calculator and compute the total
+    # ----------------------------------------------------------------------
+    # Act
+    # ----------------------------------------------------------------------
     calculator = PriceCalculator()
-    result = calculator.calculate_total(cart, discount_percent)
+    result = calculator.calculate_total(cart, discount_percent=discount_percent)
 
-    # Assert that the result matches the expected value within floatingpoint tolerance
+    # ----------------------------------------------------------------------
+    # Assert
+    # ----------------------------------------------------------------------
     assert result == pytest.approx(expected_total)
 
 
 def test_calculate_total_edge_cases(monkeypatch):
-    """
-    Test boundary and edge cases such as zero subtotal, 100% discount,
-    negative discount values, and free shipping eligibility.
-    """
-    # Patch dependencies
-    monkeypatch.setattr("price_calculator.calculate_discount", lambda s, d: s * (1 - d / 100))
-    monkeypatch.setattr("price_calculator.apply_tax", lambda s: s * 1.1)
-    monkeypatch.setattr("price_calculator.SHRIPPING_FEE", 5)
+    """Edgecase scenarios such as 0%/100% discount and zero subtotal."""
+    # ----------------------------------------------------------------------
+    # Helper functions for this test suite
+    # ----------------------------------------------------------------------
+    def identity_discount(amount, percent):
+        # 0% or 100% discount handling  the function itself is trivial.
+        return amount * (1 - percent / 100)
 
-    calculator = PriceCalculator()
+    def tax_plus_10pct(amount):
+        return amount * 1.10
 
-    # 1. Zero subtotal, no discount, no free shipping
-    cart_zero = MagicMock()
-    cart_zero.get_subtotal.return_value = 0.0
-    cart_zero.qualifies_for_free_shipping.return_value = False
-    total_zero = calculator.calculate_total(cart_zero, 0)
-    assert total_zero == pytest.approx(0.0 * 1.1 + 5)
+    # Patch the helpers.
+    monkeypatch.setattr("price_calculator.calculate_discount", identity_discount)
+    monkeypatch.setattr("price_calculator.apply_tax", tax_plus_10pct)
 
-    # 2. 100% discount, free shipping
-    cart_free = MagicMock()
-    cart_free.get_subtotal.return_value = 120.0
-    cart_free.qualifies_for_free_shipping.return_value = True
-    total_free = calculator.calculate_total(cart_free, 100)
-    assert total_free == pytest.approx(0.0 * 1.1)
+    # ----------------------------------------------------------------------
+    # Case 1  zero subtotal, no discount, free shipping
+    # ----------------------------------------------------------------------
+    cart1 = MagicMock()
+    cart1.get_subtotal.return_value = 0.0
+    cart1.qualifies_for_free_shipping.return_value = True
 
-    # 3. Negative discount (treated as no discount)
-    cart_negative = MagicMock()
-    cart_negative.get_subtotal.return_value = 50.0
-    cart_negative.qualifies_for_free_shipping.return_value = False
-    total_negative = calculator.calculate_total(cart_negative, -5)
-    assert total_negative == pytest.approx(50.0 * 1.1 + 5)
+    calc = PriceCalculator()
+    total1 = calc.calculate_total(cart1)
+    assert total1 == pytest.approx(0.0)  # tax on zero is still zero, no shipping
 
-    # 4. Discount exactly 0 (no discount applied)
-    cart_no_discount = MagicMock()
-    cart_no_discount.get_subtotal.return_value = 75.0
-    cart_no_discount.qualifies_for_free_shipping.return_value = True
-    total_no_discount = calculator.calculate_total(cart_no_discount, 0)
-    assert total_no_discount == pytest.approx(75.0 * 1.1)
+    # ----------------------------------------------------------------------
+    # Case 2  100% discount, tax applied, shipping fee charged
+    # ----------------------------------------------------------------------
+    cart2 = MagicMock()
+    cart2.get_subtotal.return_value = 150.0
+    cart2.qualifies_for_free_shipping.return_value = False
+
+    total2 = calc.calculate_total(cart2, discount_percent=100)
+    # After 100% discount subtotal becomes 0, tax leaves it 0, then shipping fee added.
+    assert total2 == pytest.approx(5.0)  # SHIPPING_FEE is assumed to be 5.0 in the module
+
+    # ----------------------------------------------------------------------
+    # Case 3  discount just below 0% (invalid)  we let the helper raise.
+    # ----------------------------------------------------------------------
+    def raise_on_negative(amount, percent):
+        if percent < 0:
+            raise ValueError("Discount percent cannot be negative")
+        return amount * (1 - percent / 100)
+
+    monkeypatch.setattr("price_calculator.calculate_discount", raise_on_negative)
+
+    cart3 = MagicMock()
+    cart3.get_subtotal.return_value = 100.0
+    cart3.qualifies_for_free_shipping.return_value = True
+
+    with pytest.raises(ValueError):
+        calc.calculate_total(cart3, discount_percent=-5)
 
 
 def test_calculate_total_error_cases(monkeypatch):
-    """
-    Test that `calculate_total` raises appropriate exceptions when
-    given invalid inputs such as a nonCartManager object or
-    nonnumeric discount values.
-    """
-    # Patch dependencies to avoid side effects
-    monkeypatch.setattr("price_calculator.calculate_discount", lambda s, d: s * (1 - d / 100))
-    monkeypatch.setattr("price_calculator.apply_tax", lambda s: s * 1.1)
-    monkeypatch.setattr("price_calculator.SHRIPPING_FEE", 5)
+    """Invalid inputs that should raise exceptions."""
+    # ----------------------------------------------------------------------
+    # Arrange  make the helper functions raise on bad input
+    # ----------------------------------------------------------------------
+    def safe_calculate_discount(amount, percent):
+        if not isinstance(percent, (int, float)):
+            raise TypeError("discount_percent must be numeric")
+        if percent < 0 or percent > 100:
+            raise ValueError("discount_percent out of range")
+        return amount * (1 - percent / 100)
 
-    calculator = PriceCalculator()
+    def safe_apply_tax(amount):
+        if not isinstance(amount, (int, float)):
+            raise TypeError("subtotal must be numeric")
+        return amount * 1.08  # assume 8% tax for the test
 
-    # 1. cart is None -> AttributeError when calling get_subtotal
-    with pytest.raises(AttributeError):
-        calculator.calculate_total(None, 10)
+    monkeypatch.setattr("price_calculator.calculate_discount", safe_calculate_discount)
+    monkeypatch.setattr("price_calculator.apply_tax", safe_apply_tax)
 
-    # 2. discount_percent is a string -> TypeError when comparing > 0
+    calc = PriceCalculator()
+
+    # ----------------------------------------------------------------------
+    # 1. Nonnumeric discount_percent should raise TypeError
+    # ----------------------------------------------------------------------
     cart = MagicMock()
-    cart.get_subtotal.return_value = 100.0
-    cart.qualifies_for_free_shipping.return_value = False
-    with pytest.raises(TypeError):
-        calculator.calculate_total(cart, "ten")
+    cart.get_subtotal.return_value = 50.0
+    cart.qualifies_for_free_shipping.return_value = True
 
-    # 3. discount_percent is None -> TypeError when comparing > 0
     with pytest.raises(TypeError):
-        calculator.calculate_total(cart, None)
+        calc.calculate_total(cart, discount_percent="ten")
+
+    # ----------------------------------------------------------------------
+    # 2. Discount percent > 100 should raise ValueError
+    # ----------------------------------------------------------------------
+    with pytest.raises(ValueError):
+        calc.calculate_total(cart, discount_percent=150)
+
+    # ----------------------------------------------------------------------
+    # 3. Cart returning a nonnumeric subtotal should propagate TypeError from apply_tax
+    # ----------------------------------------------------------------------
+    bad_cart = MagicMock()
+    bad_cart.get_subtotal.return_value = "not-a-number"
+    bad_cart.qualifies_for_free_shipping.return_value = True
+
+    with pytest.raises(TypeError):
+        calc.calculate_total(bad_cart, discount_percent=0)

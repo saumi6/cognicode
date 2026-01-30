@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: get_total_price
 Generated using: Groq LLM (openai/gpt-oss-20b)
-Generated on: 2026-01-30 23:26:22
+Generated on: 2026-01-31 01:03:11
 Source file: cart_item.py
 Function signature: def get_total_price(self) -> float
 """

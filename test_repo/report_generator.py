@@ -1,4 +1,4 @@
-"""Report Generator."""
+"""Report Generator.""" 
 from  typing import List
 from test_repo.inventory_manager import InventoryManager
 from test_repo.date_utils import get_current_timestamp

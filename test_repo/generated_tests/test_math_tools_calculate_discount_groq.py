@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: calculate_discount
-Generated using: Groq LLM (openai/gpt-oss-20b)
-Generated on: 2026-01-30 23:25:59
+Generated using: Groq LLM (openai/gpt-oss-120b)
+Generated on: 2026-01-31 04:07:56
 Source file: math_tools.py
 Function signature: def calculate_discount(price: float, discount_percent: float) -> float
 """
@@ -20,65 +20,74 @@ from test_repo.math_tools import calculate_discount
 
 import pytest
 
-# --------------------------------------------------------------------------- #
-# 1. Normal cases  a variety of typical inputs
-# --------------------------------------------------------------------------- #
+# The function under test is assumed to be importable in the test namespace.
+# If it lives in a module called `discount`, you would normally do:
+# from discount import calculate_discount
+# For the purpose of these examples we call it directly.
+
+
 @pytest.mark.parametrize(
     "price, discount_percent, expected",
     [
-        (100.0, 10.0, 90.0),          # 10% off
-        (200.0, 25.0, 150.0),         # 25% off
-        (50.0, 0.0, 50.0),            # no discount
-        (75.5, 5.0, 71.725),          # small discount
-        (123.45, 12.5, 108.4875),     # fractional discount
+        (100.0, 10.0, 90.0),               # simple 10% off
+        (59.99, 15.0, 50.9915),            # typical price with fractional cents
+        (200.0, 25.0, 150.0),              # quarter off a round number
+        (1234.56, 5.5, 1166.5888),         # mixedprecision case
+        (1.0, 50.0, 0.5),                  # 50% off a tiny amount
     ],
 )
 def test_calculate_discount_normal_cases(price, discount_percent, expected):
-    """Test normal, everyday discount calculations."""
+    """
+    Verify that ``calculate_discount`` returns the correct discounted price
+    for a variety of typical inputs.
+    """
     result = calculate_discount(price, discount_percent)
-    assert result == pytest.approx(expected)
+    # Use ``pytest.approx`` to avoid floatingpoint precision issues.
+    assert result == pytest.approx(expected, rel=1e-9)
 
 
-# --------------------------------------------------------------------------- #
-# 2. Edge cases  boundary values and extreme inputs
-# --------------------------------------------------------------------------- #
 @pytest.mark.parametrize(
     "price, discount_percent, expected",
     [
-        (0.0, 10.0, 0.0),                 # zero price
-        (100.0, 0.0, 100.0),              # zero discount
-        (100.0, 100.0, 0.0),              # full discount
-        (1e9, 50.0, 5e8),                 # very large price
-        (123.456, 0.001, 123.452543544),  # tiny discount
+        (0.0, 0.0, 0.0),          # zero price, zero discount
+        (0.0, 50.0, 0.0),         # zero price, any discount stays zero
+        (100.0, 0.0, 100.0),      # zero percent discount  original price
+        (100.0, 100.0, 0.0),      # full discount  free
+        (1e-9, 100.0, 0.0),       # extremely small price, full discount
+        (1e9, 0.0, 1e9),          # very large price, no discount
     ],
 )
 def test_calculate_discount_edge_cases(price, discount_percent, expected):
-    """Test boundary and extreme values for calculate_discount."""
+    """
+    Test boundary conditions such as zero values, full discount, and
+    extreme magnitudes to ensure the function behaves correctly at the edges.
+    """
     result = calculate_discount(price, discount_percent)
-    assert result == pytest.approx(expected)
+    assert result == pytest.approx(expected, rel=1e-9)
 
 
-# --------------------------------------------------------------------------- #
-# 3. Error cases  invalid inputs should raise appropriate exceptions
-# --------------------------------------------------------------------------- #
 def test_calculate_discount_error_cases():
-    """Test that invalid inputs raise the expected exceptions."""
+    """
+    Ensure that ``calculate_discount`` raises ``ValueError`` for invalid inputs,
+    such as negative prices, discount percentages outside the 0100 range,
+    or nonnumeric arguments.
+    """
     # Negative price
     with pytest.raises(ValueError):
         calculate_discount(-10.0, 10.0)
 
-    # Negative discount
+    # Discount percent less than 0
     with pytest.raises(ValueError):
-        calculate_discount(10.0, -5.0)
+        calculate_discount(100.0, -5.0)
 
-    # Discount greater than 100%
+    # Discount percent greater than 100
     with pytest.raises(ValueError):
-        calculate_discount(10.0, 150.0)
+        calculate_discount(100.0, 150.0)
 
     # Nonnumeric price
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         calculate_discount("100", 10.0)
 
-    # Nonnumeric discount
-    with pytest.raises(TypeError):
+    # Nonnumeric discount percent
+    with pytest.raises(ValueError):
         calculate_discount(100.0, "10")

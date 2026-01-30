@@ -26,12 +26,19 @@ class GraphEngine:
         print(f"Found {len(py_files)} Python files.")
         
         for file_path in py_files:
+            # Ignore generated tests
+            if "generated_tests" in file_path.parts:
+                continue
+
             module_name = self._get_module_name(file_path)
             self.file_map[module_name] = str(file_path)
             self.graph.add_node(module_name, type="file", path=str(file_path))
             
         # 2. Parse each file for imports
         for file_path in py_files:
+            if "generated_tests" in file_path.parts:
+                continue
+                
             try:
                 self._analyze_imports(file_path)
             except Exception as e:
@@ -60,12 +67,18 @@ class GraphEngine:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    self._add_dependency(current_module, alias.name)
+                    target = alias.name
+                    # Fix for absolute imports (test_repo.x -> x)
+                    if target.startswith("test_repo."):
+                        target = target.replace("test_repo.", "")
+                    self._add_dependency(current_module, target)
             
             elif isinstance(node, ast.ImportFrom):
                 if node.module:
                     # from x.y import z
                     target = node.module
+                    if target.startswith("test_repo."):
+                        target = target.replace("test_repo.", "")
                     self._add_dependency(current_module, target)
                 elif node.level > 0:
                     # from .xxxx import y (relative import)

@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: increment
 Generated using: Groq LLM (openai/gpt-oss-20b)
-Generated on: 2026-01-30 23:26:32
+Generated on: 2026-01-31 01:03:17
 Source file: cart_item.py
 Function signature: def increment(self)
 """
@@ -141,3 +141,20 @@ def test_increment_error_cases(monkeypatch):
         cart_item = CartItem(product, quantity=invalid_qty)
         with pytest.raises(TypeError, match="unsupported operand type"):
             cart_item.increment()
+```
+
+**Explanation of the test suite**
+
+1. **`test_increment_normal_cases`**  
+   - Uses `@pytest.mark.parametrize` to test a variety of normal starting quantities.  
+   - Asserts that the quantity is incremented correctly, that the return value is `None`, and that the product reference remains unchanged.
+
+2. **`test_increment_edge_cases`**  
+   - Covers boundary conditions such as zero, negative, very large, and floatingpoint quantities.  
+   - Verifies that the type of `quantity` is preserved after incrementing.
+
+3. **`test_increment_error_cases`**  
+   - Checks that `increment` raises a `TypeError` when the quantity is of an invalid type (string, `None`, an object without `__add__`, or a list).  
+   - Uses a helper class `NoAdd` to simulate an object that does not support addition.
+
+All tests patch `round_currency` in the module where `CartItem` is defined (`cart_item.round_currency`) to avoid import errors, and they import `CartItem` only after the patch is applied. The tests are fully selfcontained and rely solely on the standard library and `pytest`.
