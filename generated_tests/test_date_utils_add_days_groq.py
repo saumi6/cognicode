@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: add_days
-Generated using: Groq LLM (openai/gpt-oss-20b)
-Generated on: 2026-01-30 20:31:13
+Generated using: Groq LLM (openai/gpt-oss-120b)
+Generated on: 2026-04-03 04:11:53
 Source file: date_utils.py
 Function signature: def add_days(date_str: str, days: int) -> str
 """
@@ -20,88 +20,72 @@ from test_repo.date_utils import add_days
 
 import pytest
 
-# NOTE: The function under test is assumed to be available in the test
-# environment under the name `add_days`.  No explicit import is performed
-# because the test runner will provide the function in the namespace.
+# The function under test is assumed to be imported in the test module, e.g.:
+# from my_package.date_utils import add_days
 
-@pytest.mark.parametrize(
-    "date_str, days, expected",
-    [
-        # Simple forward addition
-        ("2023-01-01", 1, "2023-01-02"),
-        ("2023-01-31", 1, "2023-02-01"),
-        ("2023-12-31", 1, "2024-01-01"),
-        # Leap‑year handling
-        ("2020-02-28", 1, "2020-02-29"),
-        ("2020-02-28", 2, "2020-03-01"),
-        # Zero days
-        ("2023-03-15", 0, "2023-03-15"),
-    ],
-)
-def test_add_days_normal_cases(date_str, days, expected):
-    """
-    Test normal, expected behaviour of `add_days` for a variety of
-    typical dates and day offsets.
-    """
-    result = add_days(date_str, days)
-    assert result == expected
+
+def test_add_days_normal_cases():
+    """Normal usage  adding a positive number of days to a valid ISO date."""
+    @pytest.mark.parametrize(
+        "date_str, days, expected",
+        [
+            ("2023-01-01", 1, "2023-01-02"),
+            ("2023-01-31", 1, "2023-02-01"),
+            ("2023-02-27", 3, "2023-03-02"),
+            ("2020-02-28", 1, "2020-02-29"),   # leap year
+            ("2020-02-29", 1, "2020-03-01"),
+            ("2023-12-31", 1, "2024-01-01"),
+            ("2023-04-15", 30, "2023-05-15"),
+            ("2023-04-15", 365, "2024-04-14"),
+        ],
+    )
+    def _inner(date_str, days, expected):
+        result = add_days(date_str, days)
+        assert result == expected
+
+    # Run the parametrized inner test
+    _inner()
 
 
 def test_add_days_edge_cases():
-    """
-    Test edge cases such as negative offsets, large offsets that span
-    multiple years, and month/year boundaries.
-    """
-    # Negative offset crossing a year boundary
-    assert add_days("2023-01-01", -1) == "2022-12-31"
+    """Boundary and edgecase scenarios such as zero/negative days and large offsets."""
+    # Zero days  should return the original date unchanged
+    assert add_days("2023-07-20", 0) == "2023-07-20"
 
-    # Large offset spanning two years
-    assert add_days("2023-01-01", 730) == "2025-01-01"
+    # Negative days  moving backwards in time
+    assert add_days("2023-07-20", -1) == "2023-07-19"
+    assert add_days("2020-03-01", -1) == "2020-02-29"   # leapyear backstep
+    assert add_days("2021-01-01", -365) == "2020-01-02"
 
-    # Large offset within a single year (non‑leap)
-    assert add_days("2023-01-01", 365) == "2023-12-31"
+    # Very large positive offset  crossing many years
+    assert add_days("2000-01-01", 10_000) == "2027-05-19"
 
-    # End of month transitions
-    assert add_days("2023-04-30", 1) == "2023-05-01"
-    assert add_days("2023-02-28", 1) == "2023-03-01"
-
-    # End of February in a leap year
-    assert add_days("2024-02-28", 1) == "2024-02-29"
-
-    # Negative offset spanning a full year
-    assert add_days("2023-01-01", -365) == "2022-01-01"
+    # Very large negative offset  crossing many years backwards
+    assert add_days("2027-05-19", -10_000) == "2000-01-01"
 
 
 def test_add_days_error_cases():
-    """
-    Test that `add_days` raises appropriate exceptions for invalid
-    inputs such as malformed dates, non‑integer day offsets, and
-    None values.
-    """
-    # Malformed date string
+    """Invalid inputs should raise appropriate exceptions."""
+    # Wrong date format
     with pytest.raises(ValueError):
         add_days("2023/01/01", 5)
 
-    # Non‑existent date
+    # Nonexistent calendar date
     with pytest.raises(ValueError):
         add_days("2023-02-30", 1)
 
-    # Non‑integer days
-    with pytest.raises(TypeError):
-        add_days("2023-01-01", "5")
+    # Empty string
+    with pytest.raises(ValueError):
+        add_days("", 3)
 
-    # None as date string
+    # Nonstring date argument
     with pytest.raises(TypeError):
-        add_days(None, 5)
+        add_days(20230101, 2)   # type: ignore[arg-type]
 
-    # None as days
+    # Noninteger days argument
     with pytest.raises(TypeError):
-        add_days("2023-01-01", None)
+        add_days("2023-01-01", "5")   # type: ignore[arg-type]
 
-    # Float days
+    # None as input
     with pytest.raises(TypeError):
-        add_days("2023-01-01", 5.5)
-
-    # Days as a non‑numeric string
-    with pytest.raises(TypeError):
-        add_days("2023-01-01", "five")
+        add_days(None, 1)   # type: ignore[arg-type]

@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: update_price
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-01-31 03:55:06
+Generated on: 2026-04-03 03:42:08
 Source file: product.py
 Function signature: def update_price(self, new_price: float)
 """
@@ -19,109 +19,89 @@ sys.path.insert(0, r"C:\Users\gurav\prog\college\BE Proj\cognicode")
 from test_repo.product import Product
 
 import pytest
-from unittest.mock import Mock
-
-# NOTE:
-# The tests assume the implementation lives in a module named ``product`` that is
-# importable as ``test_repo.product`` (i.e. the repository root is ``test_repo``).
-# Adjust the import path if your project uses a different package name.
-
-from test_repo.product import Product, ValidationError
+from product import Product, ValidationError  # the module that contains the class
 
 
-@pytest.fixture(autouse=True)
-def patch_helpers(monkeypatch):
-    """
-    Patch external helper functions used by ``Product`` so that the tests are
-    deterministic and do not depend on their real implementations.
-    """
-    # ``round_currency``  for the purpose of these tests we simply round to
-    # two decimal places (the typical behaviour for a currency helper).
-    monkeypatch.setattr(
-        "test_repo.product.round_currency",
-        lambda x: round(x, 2),
-        raising=True,
-    )
-    # ``generate_sku``  return a constant dummy SKU.
-    monkeypatch.setattr(
-        "test_repo.product.generate_sku",
-        lambda category, name: f"SKU-{category[:3].upper()}-{name[:3].upper()}",
-        raising=True,
-    )
-    # No return value; the fixture only ensures the patches are active for every test.
-    yield
+def _mock_round_currency(x):
+    """Simple deterministic rounding used for the tests."""
+    return round(x, 2)
+
+
+def _mock_generate_sku(category, name):
+    """Return a predictable SKU for testing."""
+    return f"{category[:3].upper()}-{name[:3].upper()}"
 
 
 @pytest.mark.parametrize(
     "initial_price, new_price, expected_price",
     [
-        (10.0, 15.99, 15.99),          # simple increase
-        (20.555, 30.123, 30.12),       # rounding down
-        (0.99, 0.995, 1.0),            # rounding up
-        (1000.1234, 2000.5678, 2000.57)  # large numbers with rounding
+        (10.0, 15.99, 15.99),          # normal increase
+        (20.555, 30.1234, 30.12),      # rounding to 2 decimals
+        (5.0, 5.0, 5.0),               # same price
+        (99.999, 100.001, 100.0),      # rounding up/down edge
     ],
 )
-def test_update_price_normal_cases(initial_price, new_price, expected_price):
+def test_update_price_normal_cases(monkeypatch, initial_price, new_price, expected_price):
     """
-    Verify that ``update_price`` correctly updates the ``price`` attribute for
-    typical, wellbehaved inputs.
+    Verify that ``update_price`` correctly stores a rounded price for typical inputs.
     """
-    # Arrange  create a product with a known initial price.
+    # Patch the external helpers used by ``Product.__init__`` and ``update_price``.
+    monkeypatch.setattr("product.round_currency", _mock_round_currency)
+    monkeypatch.setattr("product.generate_sku", _mock_generate_sku)
+
+    # Create a product instance  the constructor also uses the mocked helpers.
     prod = Product(name="TestProduct", price=initial_price, category="General")
 
-    # Act  update the price.
+    # Call the method under test.
     prod.update_price(new_price)
 
-    # Assert  the stored price should be the rounded value.
+    # The stored price must be the rounded value returned by the mock.
     assert prod.price == pytest.approx(expected_price)
 
 
-def test_update_price_edge_cases():
+def test_update_price_edge_cases(monkeypatch):
     """
-    Test boundary conditions such as zero price, very small fractions,
-    and repeated updates.
+    Test boundary conditions such as zero price, extremely large values,
+    and verify that unrelated attributes (e.g., ``stock``) stay unchanged.
     """
-    # Edge case 1  setting price to zero.
-    prod_zero = Product(name="ZeroPrice", price=5.0)
+    monkeypatch.setattr("product.round_currency", _mock_round_currency)
+    monkeypatch.setattr("product.generate_sku", _mock_generate_sku)
+
+    # Edge case 1  price set to zero.
+    prod_zero = Product(name="ZeroPrice", price=0.0)
     prod_zero.update_price(0.0)
     assert prod_zero.price == pytest.approx(0.0)
 
-    # Edge case 2  a price that is smaller than the rounding precision.
-    prod_small = Product(name="SmallPrice", price=1.0)
-    prod_small.update_price(0.0001)          # rounds to 0.00
-    assert prod_small.price == pytest.approx(0.0)
+    # Edge case 2  very large price.
+    huge_price = 1e9 + 0.5555
+    prod_huge = Product(name="HugePrice", price=huge_price)
+    prod_huge.update_price(huge_price * 1.1)  # increase by 10%
+    expected_huge = round(huge_price * 1.1, 2)
+    assert prod_huge.price == pytest.approx(expected_huge)
 
-    # Edge case 3  extremely large price.
-    huge_price = 1e12 + 0.555
-    prod_huge = Product(name="HugePrice", price=1e12)
-    prod_huge.update_price(huge_price)
-    assert prod_huge.price == pytest.approx(round(huge_price, 2))
+    # Edge case 3  price with many decimal places.
+    prod_precise = Product(name="Precise", price=1.234567)
+    prod_precise.update_price(2.718281828)
+    assert prod_precise.price == pytest.approx(2.72)
 
-    # Edge case 4  multiple successive updates.
-    prod_multi = Product(name="MultiUpdate", price=10.0)
-    updates = [12.345, 12.345, 9.999, 9.999]
-    for upd in updates:
-        prod_multi.update_price(upd)
-    # The final price should be the rounded value of the last update.
-    assert prod_multi.price == pytest.approx(round(updates[-1], 2))
+    # Ensure that ``stock`` is untouched by price updates.
+    prod_precise.add_stock(10)
+    assert prod_precise.stock == 10
+    prod_precise.update_price(3.33)
+    assert prod_precise.stock == 10  # stock unchanged
 
 
-def test_update_price_error_cases():
+def test_update_price_error_cases(monkeypatch):
     """
-    Ensure that invalid inputs raise the appropriate ``ValidationError``.
+    ``update_price`` must raise ``ValidationError`` when a negative price is supplied.
     """
+    monkeypatch.setattr("product.round_currency", _mock_round_currency)
+    monkeypatch.setattr("product.generate_sku", _mock_generate_sku)
+
     prod = Product(name="ErrorCase", price=10.0)
 
-    # Negative price should raise ValidationError.
     with pytest.raises(ValidationError):
-        prod.update_price(-5.0)
+        prod.update_price(-0.01)
 
-    # ``new_price`` that is not a number (e.g., ``None``) should also raise.
-    # The implementation will attempt the ``< 0`` comparison and raise a
-    # ``TypeError``; we treat any exception as a failure of validation.
-    with pytest.raises(Exception):
-        prod.update_price(None)
-
-    # Very large negative number  still a ValidationError.
-    with pytest.raises(ValidationError):
-        prod.update_price(-1e9)
+    # Also verify that the original price remains unchanged after the failed update.
+    assert prod.price == pytest.approx(10.0)

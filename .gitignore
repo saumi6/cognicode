@@ -11,4 +11,17 @@ __pycache__/
 .DS_Store
 Thumbs.db
 node_modules
+
+# Windows reserved
+nul
+
+# Secrets
+.env
 .env.env
+
+# Database
+*.db
+
+# IDE
+.vscode/
+.idea/

@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: __init__
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-01-31 03:54:56
+Generated on: 2026-04-03 03:41:56
 Source file: product.py
 Function signature: def __init__(self, name: str, price: float, category: str = 'General')
 """
@@ -21,97 +21,117 @@ from test_repo.product import Product
 import pytest
 from unittest.mock import MagicMock
 
-# The class under test lives in the module `product`.
-# Import the class and the custom exception so the tests can reference them.
-from product import Product, ValidationError
+# ----------------------------------------------------------------------
+# NOTE:
+# The production code lives in a file called ``product.py`` (module name ``product``).
+# The tests import the ``Product`` class from that module and monkeypatch the
+# helper functions ``round_currency`` and ``generate_sku`` as well as the
+# ``ValidationError`` exception that the class uses.
+# ----------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
-def _mock_helpers(monkeypatch):
+def patch_helpers(monkeypatch):
     """
-    Replace the helper functions used by ``Product.__init__`` with deterministic
-    standins so the tests are not dependent on their real implementations.
+    Patch external helpers used by ``Product.__init__`` so the tests are
+    deterministic and do not depend on the real implementations.
     """
-    # ``round_currency`` should simply return the value it receives.
+    # a very simple rounding implementation  just return the value rounded to 2 decimals
     monkeypatch.setattr(
-        "product.round_currency", lambda x: x, raising=True
+        "product.round_currency", lambda x: round(x, 2), raising=True
     )
-    # ``generate_sku`` should return a predictable string based on its inputs.
+    # deterministic SKU generation  concatenate category and name with a dash
     monkeypatch.setattr(
-        "product.generate_sku",
-        lambda category, name: f"SKU-{category[:3].upper()}-{name[:3].upper()}",
-        raising=True,
+        "product.generate_sku", lambda cat, name: f"{cat[:3].upper()}-{name[:3].upper()}", raising=True
     )
-    # No return  the fixture only sets up the patches.
-    yield
+    # a simple ValidationError that behaves like a normal Exception
+    class _ValidationError(Exception):
+        pass
+
+    monkeypatch.setattr("product.ValidationError", _ValidationError, raising=True)
+    return _ValidationError
 
 
 @pytest.mark.parametrize(
-    "name, price, category, expected_sku",
+    "name, price, category, expected_price, expected_sku",
     [
-        ("Apple", 1.99, "Fruit", "SKU-FRU-APP"),
-        ("Banana", 0.5, "Fruit", "SKU-FRU-BAN"),
-        ("Notebook", 12.49, "Stationery", "SKU-STA-NOT"),
-        ("Pen", 2.0, None, "SKU-GEN-PEN"),  # ``category`` defaults to "General"
-        ("Water Bottle", 8.75, "Sports", "SKU-SPO-WAT"),
+        ("Apple", 1.234, "Fruit", 1.23, "FRU-APP"),
+        ("Banana", 0.99, "Fruit", 0.99, "FRU-BAN"),
+        ("Notebook", 12.5, "Stationery", 12.5, "STA-NOT"),
+        ("Pen", 2.0, None, 2.0, "GEN-PEN"),  # ``category`` defaults to "General"
     ],
 )
-def test___init___normal_cases(name, price, category, expected_sku):
+def test___init___normal_cases(name, price, category, expected_price, expected_sku):
     """
-    Verify that a ``Product`` instance is correctly initialised for typical inputs.
+    Normal initialisation scenarios:
+    * typical name / price / category combinations
+    * default category handling when ``category`` is omitted / ``None``
     """
-    # ``category`` may be ``None`` to trigger the default argument.
-    init_category = category if category is not None else "General"
+    # Import inside the test so the monkeypatch fixture is already active
+    from product import Product
 
-    # Create an *uninitialised* instance and call ``__init__`` manually.
-    product = Product.__new__(Product)
-    product.__init__(name, price, init_category)
+    # ``category`` may be ``None`` to trigger the default argument inside the class
+    if category is None:
+        prod = Product(name, price)          # default category = "General"
+    else:
+        prod = Product(name, price, category)
 
-    # Assertions about the public attributes.
-    assert product.name == name
-    assert product.price == pytest.approx(price)  # round_currency is a noop
-    assert product.category == init_category
-    assert product.sku == expected_sku
-    assert product.stock == 0  # default stock
+    assert prod.name == name
+    assert prod.price == pytest.approx(expected_price)
+    # The class stores the *actual* category value (defaulted to "General" when omitted)
+    expected_category = category if category is not None else "General"
+    assert prod.category == expected_category
+    assert prod.sku == expected_sku
+    # Stock should always start at zero
+    assert prod.stock == 0
 
 
 def test___init___edge_cases():
     """
-    Test boundary conditions such as zero price, empty strings and very large values.
+    Edgecase initialisation:
+    * price exactly zero
+    * empty strings for ``name`` and ``category``
+    * very large price value
+    * price with many decimal places (rounding check)
     """
-    # Edge case 1  price exactly zero.
-    p_zero = Product.__new__(Product)
-    p_zero.__init__("Freebie", 0.0, "Promotions")
+    from product import Product
+
+    # 1. Zero price  should be accepted and rounded to 0.0
+    p_zero = Product(name="Freebie", price=0.0)
     assert p_zero.price == pytest.approx(0.0)
-    assert p_zero.sku == "SKU-PRO-FRE"
+    assert p_zero.category == "General"
+    assert p_zero.sku == "GEN-FRE"
 
-    # Edge case 2  empty name and empty category (category falls back to default).
-    p_empty = Product.__new__(Product)
-    p_empty.__init__("", 10.0, "")
+    # 2. Empty name and empty category  still valid, just stored asis
+    p_empty = Product(name="", price=10.0, category="")
     assert p_empty.name == ""
-    # Empty category is accepted asis; the default is only used when the argument is omitted.
     assert p_empty.category == ""
-    assert p_empty.sku == "SKU---"  # threechar slices of empty strings yield empty parts
+    # SKU generation uses the first three characters (which may be empty)
+    assert p_empty.sku == "-"
 
-    # Edge case 3  very large price with many decimal places.
-    large_price = 9_999_999.9999
-    p_large = Product.__new__(Product)
-    p_large.__init__("Luxury Car", large_price, "Vehicles")
-    assert p_large.price == pytest.approx(large_price)
-    assert p_large.sku == "SKU-VEH-LUX"
+    # 3. Very large price  ensure it is rounded correctly
+    huge_price = 9_999_999.98765
+    p_huge = Product(name="Luxury", price=huge_price, category="Expensive")
+    assert p_huge.price == pytest.approx(round(huge_price, 2))
+    assert p_huge.sku == "EXP-LUX"
+
+    # 4. Price with many decimal places  rounding to two decimals
+    p_precise = Product(name="Precise", price=1.9999, category="Math")
+    assert p_precise.price == pytest.approx(2.00)
+    assert p_precise.sku == "MAT-PRE"
 
 
 def test___init___error_cases():
     """
-    Ensure that invalid inputs raise the appropriate exceptions.
+    Error handling:
+    * negative price should raise the patched ``ValidationError``.
     """
-    # Negative price should raise the custom ``ValidationError``.
-    product = Product.__new__(Product)
-    with pytest.raises(ValidationError):
-        product.__init__("Bad Product", -5.0, "Misc")
+    from product import Product, ValidationError
 
-    # Nonnumeric price (e.g., a string) will raise a ``TypeError`` when compared
-    # to zero inside the method.
-    product = Product.__new__(Product)
-    with pytest.raises(TypeError):
-        product.__init__("Weird", "not-a-number", "Misc")
+    # Negative price  expect ValidationError
+    with pytest.raises(ValidationError):
+        Product(name="BadProduct", price=-5.0)
+
+    # Also test that a negative price with an explicit category still raises
+    with pytest.raises(ValidationError):
+        Product(name="BadProduct", price=-0.01, category="Invalid")

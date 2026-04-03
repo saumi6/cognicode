@@ -1,6 +1,7 @@
 import sqlite3
 import time
 import os
+import json
 from typing import List, Dict, Optional
 
 class Database:
@@ -13,6 +14,9 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row  # Access columns by name
         return conn
+
+    # Default metrics template for new or missing entries
+    DEFAULT_METRICS = {"coverage_percent": 0.0, "flakiness_rate": 0.0}
 
     def init_db(self):
         conn = self.get_connection()
@@ -27,6 +31,14 @@ class Database:
                 error_message TEXT
             )
         ''')
+
+        # --- Safe migration: add 'metrics' column if it doesn't exist ---
+        try:
+            c.execute("ALTER TABLE test_runs ADD COLUMN metrics TEXT DEFAULT '{}'")
+        except sqlite3.OperationalError:
+            # Column already exists – nothing to do
+            pass
+
         conn.commit()
         conn.close()
 
@@ -79,3 +91,66 @@ class Database:
         rows = [dict(row) for row in c.fetchall()]
         conn.close()
         return rows
+
+    # ------------------------------------------------------------------ #
+    #  Metrics helpers (Contract A)                                       #
+    # ------------------------------------------------------------------ #
+
+    def update_metrics(self, file_path: str, metrics: Dict) -> None:
+        """
+        Upsert the metrics JSON blob for the latest test_run of *file_path*.
+        If no row exists yet a new UNKNOWN row is inserted.
+        """
+        merged = {**self.DEFAULT_METRICS, **metrics}
+        payload = json.dumps(merged)
+
+        conn = self.get_connection()
+        c = conn.cursor()
+
+        # Try to update the most recent row for this file
+        c.execute('''
+            UPDATE test_runs
+            SET metrics = ?
+            WHERE id = (
+                SELECT id FROM test_runs
+                WHERE file_path = ? COLLATE NOCASE
+                ORDER BY timestamp DESC
+                LIMIT 1
+            )
+        ''', (payload, file_path))
+
+        if c.rowcount == 0:
+            # No existing row – seed one so the metrics aren't lost
+            import time as _t
+            c.execute('''
+                INSERT INTO test_runs (file_path, status, timestamp, metrics)
+                VALUES (?, 'UNKNOWN', ?, ?)
+            ''', (file_path, _t.time(), payload))
+
+        conn.commit()
+        conn.close()
+
+    def get_metrics(self, file_path: str) -> Dict:
+        """
+        Return the metrics dict for *file_path* (from its latest row).
+        Falls back to DEFAULT_METRICS when nothing is stored yet.
+        """
+        conn = self.get_connection()
+        c = conn.cursor()
+        c.execute('''
+            SELECT metrics FROM test_runs
+            WHERE file_path = ? COLLATE NOCASE
+            ORDER BY timestamp DESC
+            LIMIT 1
+        ''', (file_path,))
+        row = c.fetchone()
+        conn.close()
+
+        if row and row['metrics']:
+            try:
+                stored = json.loads(row['metrics'])
+                return {**self.DEFAULT_METRICS, **stored}
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        return dict(self.DEFAULT_METRICS)

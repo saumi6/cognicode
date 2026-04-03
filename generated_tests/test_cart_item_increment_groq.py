@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: increment
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-01-31 03:54:35
+Generated on: 2026-04-03 03:41:13
 Source file: cart_item.py
 Function signature: def increment(self)
 """
@@ -21,73 +21,61 @@ from test_repo.cart_item import CartItem
 import pytest
 from unittest.mock import Mock
 
-# Assuming the CartItem class lives in a module named `cart_item`
-# from cart_item import CartItem
-
 
 @pytest.mark.parametrize(
     "initial_qty, expected_qty",
     [
         (0, 1),          # starting from zero
         (1, 2),          # typical case
-        (5, 6),          # multiple items
-        (10, 11),        # doubledigit quantity
+        (5, 6),          # larger number
+        (123456, 123457) # big integer
     ],
 )
 def test_increment_normal_cases(initial_qty, expected_qty):
     """Increment should increase the quantity by exactly one for normal inputs."""
-    # Mock a simple product with a price attribute (price is irrelevant for increment)
+    # Mock a simple Product with a price attribute (price is irrelevant for increment)
     mock_product = Mock()
-    mock_product.price = 9.99
+    mock_product.price = 10.0
 
+    # Create CartItem with the mocked product and the parametrized initial quantity
     item = CartItem(product=mock_product, quantity=initial_qty)
+
+    # Perform the operation under test
     item.increment()
+
+    # Verify that the quantity has been increased by one
     assert item.quantity == expected_qty
 
 
 def test_increment_edge_cases():
-    """Edge cases such as very large numbers and negative starting quantities."""
+    """Edgecase tests for increment (very large numbers and negative start values)."""
     mock_product = Mock()
-    mock_product.price = 1.23
+    mock_product.price = 1.0
 
-    # Very large integer (Python ints are unbounded, but we test a huge value)
-    huge_qty = 10**100
-    item_huge = CartItem(product=mock_product, quantity=huge_qty)
+    # Edge case 1: a very large integer (Python ints are unbounded, but we test the logic)
+    huge_number = 10**100
+    item_huge = CartItem(product=mock_product, quantity=huge_number)
     item_huge.increment()
-    assert item_huge.quantity == huge_qty + 1
+    assert item_huge.quantity == huge_number + 1
 
-    # Negative starting quantity  the method does not guard against it
-    negative_qty = -5
-    item_negative = CartItem(product=mock_product, quantity=negative_qty)
+    # Edge case 2: starting with a negative quantity (the method does not guard against it)
+    negative_start = -5
+    item_negative = CartItem(product=mock_product, quantity=negative_start)
     item_negative.increment()
-    assert item_negative.quantity == negative_qty + 1
-
-    # Boolean quantity (True behaves like 1, False like 0)
-    item_bool_true = CartItem(product=mock_product, quantity=True)
-    item_bool_true.increment()
-    assert item_bool_true.quantity == 2  # True (1) + 1
-
-    item_bool_false = CartItem(product=mock_product, quantity=False)
-    item_bool_false.increment()
-    assert item_bool_false.quantity == 1  # False (0) + 1
+    assert item_negative.quantity == negative_start + 1
 
 
 def test_increment_error_cases():
     """Calling increment on a CartItem with a nonnumeric quantity should raise TypeError."""
     mock_product = Mock()
-    mock_product.price = 4.56
+    mock_product.price = 2.5
 
-    # Quantity as a string  addition with int is invalid
-    item_str = CartItem(product=mock_product, quantity="3")
+    # Case 1: quantity is a string
+    item_str = CartItem(product=mock_product, quantity="not-an-int")
     with pytest.raises(TypeError):
         item_str.increment()
 
-    # Quantity as None  also invalid for addition
+    # Case 2: quantity is None
     item_none = CartItem(product=mock_product, quantity=None)
     with pytest.raises(TypeError):
         item_none.increment()
-
-    # Quantity as a list  invalid operand type
-    item_list = CartItem(product=mock_product, quantity=[1, 2])
-    with pytest.raises(TypeError):
-        item_list.increment()

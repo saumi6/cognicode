@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: apply_tax
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-01-31 03:54:12
+Generated on: 2026-04-03 03:44:13
 Source file: math_tools.py
 Function signature: def apply_tax(amount: float) -> float
 """
@@ -20,55 +20,68 @@ from test_repo.math_tools import apply_tax
 
 import pytest
 
+# The function under test is assumed to be imported in the test module, e.g.:
+# from my_module import apply_tax
+# For the purpose of these examples we just refer to it directly.
+
+
 @pytest.mark.parametrize(
     "amount, expected",
     [
-        (0.0, 0.0),                # zero amount  tax should not change it
-        (10.0, 12.0),              # simple positive amount
-        (99.99, 119.988),          # typical price with two decimals
-        (1234.56, 1481.472),       # larger amount
-        (0.01, 0.012),             # very small amount
+        (100.0, 120.0),          # typical positive amount
+        (0.0, 0.0),              # zero amount  tax should not change it
+        (50.5, 60.6),            # amount with cents
+        (1_000_000.0, 1_200_000.0),  # very large amount
+        (19.99, 23.988),         # typical price with twodecimal precision
     ],
 )
 def test_apply_tax_normal_cases(amount, expected):
-    """Verify that ``apply_tax`` returns the correct total for typical inputs.
-
-    The function is expected to add a 20% tax (i.e. multiply by 1.2).
+    """
+    Test normal, expected usage of ``apply_tax`` with a variety of
+    realistic monetary values.
     """
     result = apply_tax(amount)
-    # ``apply_tax`` should return a float; ``pytest.approx`` handles rounding issues.
-    assert isinstance(result, float)
+    # Use ``pytest.approx`` to avoid floatingpoint precision issues.
     assert result == pytest.approx(expected, rel=1e-9)
 
 
 def test_apply_tax_edge_cases():
-    """Test boundary and extreme values for ``apply_tax``."""
-    # Very large amount  check that the function still returns a sensible value
-    huge_amount = 1e12
-    huge_expected = huge_amount * 1.2
-    assert apply_tax(huge_amount) == pytest.approx(huge_expected, rel=1e-9)
-
-    # Very small positive amount  ensure no underflow or rounding problems
-    tiny_amount = 1e-9
-    tiny_expected = tiny_amount * 1.2
-    assert apply_tax(tiny_amount) == pytest.approx(tiny_expected, rel=1e-9)
-
-    # Amount that is already a whole number after tax
-    whole_amount = 5.0
-    whole_expected = whole_amount * 1.2
-    assert apply_tax(whole_amount) == pytest.approx(whole_expected, rel=1e-9)
-
-
-def test_apply_tax_error_cases():
-    """Check that ``apply_tax`` raises appropriate exceptions for invalid input."""
-    # Negative amounts are not allowed
+    """
+    Test boundary and edgecase inputs such as negative amounts and
+    extremely small positive amounts.
+    """
+    # Edge case: negative amount  many implementations raise an error,
+    # but if they allow it, the tax should still be applied proportionally.
+    # Here we assert the function raises a ``ValueError`` for negatives.
     with pytest.raises(ValueError):
         apply_tax(-10.0)
 
-    # Nonnumeric types should raise a TypeError
+    # Edge case: a very small positive amount (close to zero)
+    tiny_amount = 1e-9
+    expected = tiny_amount * 1.20  # assuming a 20% tax rate
+    result = apply_tax(tiny_amount)
+    assert result == pytest.approx(expected, rel=1e-9)
+
+    # Edge case: amount exactly at a typical rounding threshold
+    amount = 0.05  # 5cents
+    expected = 0.05 * 1.20
+    result = apply_tax(amount)
+    assert result == pytest.approx(expected, rel=1e-9)
+
+
+def test_apply_tax_error_cases():
+    """
+    Verify that ``apply_tax`` raises appropriate exceptions for
+    invalid input types.
+    """
+    # Nonnumeric string
     with pytest.raises(TypeError):
         apply_tax("100")
 
-    # ``None`` is also invalid
+    # ``None`` as input
     with pytest.raises(TypeError):
         apply_tax(None)
+
+    # List instead of a number
+    with pytest.raises(TypeError):
+        apply_tax([100])

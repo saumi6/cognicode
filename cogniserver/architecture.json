@@ -1,0 +1,31 @@
+{
+    "rules": [
+        {
+            "source_dir": "dashboard",
+            "cannot_import": "cogniserver",
+            "reason": "UI layer must not import backend server modules directly"
+        },
+        {
+            "source_dir": "test_repo",
+            "cannot_import": "dashboard",
+            "reason": "Business logic must not depend on the UI layer"
+        },
+        {
+            "source_dir": "test_repo",
+            "cannot_import": "cogniserver",
+            "reason": "Business logic must not import the server layer"
+        }
+    ],
+    "module_rules": [
+        {
+            "source_pattern": "checkout_controller",
+            "cannot_import_pattern": "cart_manager",
+            "reason": "Controllers should not call Managers directly – use a Service layer"
+        },
+        {
+            "source_pattern": "cart_item",
+            "cannot_import_pattern": "math_tools",
+            "reason": "Domain models should not depend on utility libraries directly"
+        }
+    ]
+}

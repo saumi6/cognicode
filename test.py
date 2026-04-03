@@ -6,14 +6,22 @@ import sys
 import subprocess
 import os
 import json
+import re
 import urllib.request
 import urllib.error
 from pathlib import Path
 
-# Server URL for reporting results
-SERVER_URL = "http://localhost:8000/tests/result"
+# Force UTF-8 encoding for standard output to avoid Windows console charmap errors
+if sys.stdout.encoding.lower() != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
 
-def report_to_server(file_path, status, error=None):
+# Server URL for reporting results
+SERVER_URL = "http://127.0.0.1:8000/tests/result"
+
+def report_to_server(file_path, status, error=None, coverage_percent=None):
     """Send test result to CogniServer"""
     try:
         # Use absolute path for consistency
@@ -21,7 +29,8 @@ def report_to_server(file_path, status, error=None):
         data = {
             "file_path": abs_path, 
             "status": status,
-            "error": error
+            "error": error,
+            "coverage_percent": coverage_percent,
         }
         
         req = urllib.request.Request(
@@ -36,8 +45,21 @@ def report_to_server(file_path, status, error=None):
         # Don't fail the test runner if reporting fails
         print(f"[Warning] Could not report to server: {e}")
 
-def run_pytest(test_file_path):
-    """Run pytest on the generated test file and return stats"""
+def _parse_coverage_total(output: str) -> float:
+    """
+    Parse the pytest-cov terminal output for the TOTAL line.
+    Example line:  TOTAL      100     15     85%
+    Returns the coverage percentage as a float (e.g. 85.0),
+    or 0.0 if no TOTAL line is found.
+    """
+    m = re.search(r'^TOTAL\s+\d+\s+\d+\s+(\d+)%', output, re.MULTILINE)
+    if m:
+        return float(m.group(1))
+    return 0.0
+
+
+def run_pytest(test_file_path, source_file_path=None):
+    """Run pytest on the generated test file and return (passed, failed, error, coverage_percent)"""
     print(f"\nRunning pytest on {test_file_path}...")
     print("=" * 60)
     
@@ -54,14 +76,41 @@ def run_pytest(test_file_path):
     current_env["PYTHONPATH"] = f"{test_repo_dir}{os.pathsep}{python_path}"
     
     try:
-        # Run pytest with verbose output
-        result = subprocess.run([
+        # Build pytest command
+        pytest_cmd = [
             sys.executable, '-m', 'pytest', 
             test_file_path, 
             '-v',           # Verbose output
             '--tb=short',   # Short traceback format
             '--no-header'   # No pytest header
-        ], capture_output=True, text=True, timeout=30, env=current_env)
+        ]
+
+        # ── pytest-cov integration ────────────────────────────────
+        # If we know which source file is being tested, add --cov
+        # scoped to that module so we get a per-file coverage report.
+        if source_file_path:
+            # Ensure it's a relative path before converting to a module name
+            # e.g. C:\...\test_repo\address.py -> test_repo/address.py -> test_repo.address
+            try:
+                p = Path(source_file_path)
+                if p.is_absolute():
+                    p = p.relative_to(Path.cwd())
+                
+                module_path = str(p).replace('.py', '').replace('/', '.').replace('\\', '.')
+                module_path = module_path.strip('.')
+                
+                pytest_cmd += [
+                    f'--cov={module_path}',
+                    '--cov-report=term',    # terminal table output
+                ]
+            except Exception as e:
+                print(f"[Warning] Failed to configure coverage module path: {e}")
+
+        # Run pytest
+        result = subprocess.run(
+            pytest_cmd,
+            capture_output=True, text=True, timeout=60, env=current_env
+        )
         
         # Print pytest output
         output_txt = ""
@@ -73,7 +122,6 @@ def run_pytest(test_file_path):
             output_txt += result.stderr
         
         # Parse output for counts using regex
-        import re
         passed_count = 0
         failed_count = 0
         
@@ -92,10 +140,6 @@ def run_pytest(test_file_path):
         # But let's trust regex or exit code.
         
         if result.returncode == 0 and passed_count == 0:
-            # Maybe it said "collected X items" and nothing failed? 
-            # Or regex failed. But if ret code 0, usually implies success.
-            # Let's verify if we missed something.
-            # For robustness, we return what we found.
             pass
 
         error_msg = None
@@ -108,17 +152,22 @@ def run_pytest(test_file_path):
         else:
              print("All tests passed!")
 
-        return passed_count, failed_count, error_msg
+        # ── Parse coverage from pytest-cov output ─────────────────
+        coverage_percent = _parse_coverage_total(output_txt)
+        if coverage_percent > 0:
+            print(f"[Coverage] {coverage_percent:.0f}%")
+
+        return passed_count, failed_count, error_msg, coverage_percent
             
     except subprocess.TimeoutExpired:
-        print("Tests timed out (30s limit)")
-        return 0, 0, "Timeout"
+        print("Tests timed out (60s limit)")
+        return 0, 0, "Timeout", 0.0
     except FileNotFoundError:
         print("pytest not found. Install with: pip install pytest")
-        return 0, 0, "pytest not found"
+        return 0, 0, "pytest not found", 0.0
     except Exception as e:
         print(f"Error running pytest: {e}")
-        return 0, 0, str(e)
+        return 0, 0, str(e), 0.0
 
 def main():
     """Main function with command-line argument parsing"""
@@ -163,6 +212,7 @@ def main():
     total_passed = 0
     total_run = 0
     file_errors = []
+    last_coverage_percent = 0.0  # Will hold the latest coverage value
 
     try:
         # Determine which functions to test
@@ -214,10 +264,15 @@ def main():
             # Step 2: Run the generated tests
             print(f"Step 2: Running generated tests...")
             
-            p_count, f_count, error_msg = run_pytest(result['output_file'])
+            p_count, f_count, error_msg, cov_pct = run_pytest(
+                result['output_file'],
+                source_file_path=args.file_path
+            )
             
             total_passed += p_count
             total_run += (p_count + f_count)
+            if cov_pct > 0:
+                last_coverage_percent = cov_pct
             
             # Status per function
             if f_count > 0 or (p_count == 0 and f_count == 0 and error_msg):
@@ -260,13 +315,53 @@ def main():
             print(f"{item['function']:<30} | {item['status']:<10} | {item['details']}")
         print("-" * 60)
 
+        # ── AI Diagnosis on failure ──────────────────────────────
+        error_payload = None
+        if file_status == "FAILED" and file_errors:
+            raw_traceback = "\n".join(file_errors)
+
+            # Run the Groq failure analysis (never block the runner)
+            ai_diagnosis = ""
+            try:
+                ai_diagnosis = gen.analyze_test_failure(args.file_path, raw_traceback)
+            except Exception:
+                ai_diagnosis = "AI Analysis Unavailable."
+
+            # ANSI color codes for terminal output
+            CYAN   = "\033[96m"
+            YELLOW = "\033[93m"
+            RESET  = "\033[0m"
+            BOLD   = "\033[1m"
+
+            diagnosis_block = (
+                f"\n{CYAN}{BOLD}{'=' * 48}\n"
+                f"           ⚡ AI DIAGNOSIS ⚡\n"
+                f"{'=' * 48}{RESET}\n"
+                f"{YELLOW}{ai_diagnosis}{RESET}\n"
+                f"{CYAN}{'=' * 48}{RESET}\n"
+            )
+
+            # Print to terminal so the developer sees it immediately
+            print(diagnosis_block)
+
+            # Build the server payload (plain text, no ANSI codes)
+            error_payload = (
+                "================ AI DIAGNOSIS ================\n"
+                f"{ai_diagnosis}\n"
+                "===============================================\n\n"
+                "[Raw Pytest Traceback Follows...]\n"
+                f"{raw_traceback}"
+            )
+
         # Report to server
         if not args.no_run:
             print(f"Reporting result to server for {args.file_path}...")
+            print(f"[Coverage] Sending coverage_percent={last_coverage_percent}")
             report_to_server(
                 args.file_path, 
                 file_status, 
-                error="\n".join(file_errors) if file_errors and file_status == "FAILED" else None
+                error=error_payload,
+                coverage_percent=last_coverage_percent
             )
             print(f"{status_symbol} {os.path.basename(args.file_path)}: {file_status}")
 

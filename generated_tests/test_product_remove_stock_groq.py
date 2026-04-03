@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: remove_stock
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-01-31 03:55:26
+Generated on: 2026-04-03 03:42:40
 Source file: product.py
 Function signature: def remove_stock(self, qty: int)
 """
@@ -19,95 +19,114 @@ sys.path.insert(0, r"C:\Users\gurav\prog\college\BE Proj\cognicode")
 from test_repo.product import Product
 
 import pytest
-from unittest.mock import Mock
-
-# The module that contains the Product class is assumed to be named ``product``.
-# Adjust the import path if the actual module name differs.
-from product import Product, ValidationError
+from product import Product
 
 
-@pytest.fixture(autouse=True)
-def _mock_dependencies(monkeypatch):
+def _patch_dependencies(monkeypatch):
     """
-    Mock the external helpers used by ``Product.__init__`` so that the class can be
-    instantiated without pulling in the real implementations.
+    Helper that installs harmless standins for the external helpers used by
+    ``Product`` (``round_currency``, ``generate_sku`` and ``ValidationError``).
+    instructions.
     """
-    # ``round_currency`` is expected to return a numeric value  we simply return the
-    # value that was passed in.
+    # ``round_currency`` is expected to return a monetary value  for the tests a
+    # simple identity function is sufficient.
     monkeypatch.setattr(
-        "product.round_currency", lambda x: x, raising=False
+        "product.round_currency",
+        lambda x: x,
+        raising=False,
     )
-    # ``generate_sku`` should return a string  we return a deterministic placeholder.
+    # ``generate_sku`` only needs to return *something* that can be stored on the
+    # instance; a deterministic string keeps the behaviour predictable.
     monkeypatch.setattr(
-        "product.generate_sku", lambda cat, name: f"SKU-{cat[:3]}-{name[:3]}", raising=False
+        "product.generate_sku",
+        lambda category, name: f"{category[:2].upper()}-{name[:2].upper()}",
+        raising=False,
     )
-    # ``ValidationError`` is already imported from the module, no need to mock it.
-
-
-def _make_product(initial_stock: int = 0) -> Product:
-    """
-    Helper that creates a ``Product`` instance with a given initial stock level.
-    """
-    p = Product(name="TestProduct", price=10.0, category="TestCat")
-    p.add_stock(initial_stock)
-    return p
+    # ``ValidationError`` is only used for a negativeprice guard; mapping it to
+    # the builtin ``Exception`` type is enough for the test suite.
+    monkeypatch.setattr(
+        "product.ValidationError",
+        Exception,
+        raising=False,
+    )
 
 
 @pytest.mark.parametrize(
     "initial_stock, remove_qty, expected_stock",
     [
-        (10, 1, 9),          # simple decrement
-        (5, 5, 0),           # remove exactly the whole stock
-        (100, 20, 80),       # larger numbers
-        (3, 0, 3),           # removing zero does not change stock
+        (10, 3, 7),      # typical case
+        (5, 5, 0),       # remove exactly the whole stock
+        (100, 1, 99),    # large stock, small removal
+        (1, 0, 1),       # removing zero does not change stock
+        (50, 25, 25),    # half the stock removed
     ],
 )
-def test_remove_stock_normal_cases(initial_stock, remove_qty, expected_stock):
+def test_remove_stock_normal_cases(monkeypatch, initial_stock, remove_qty, expected_stock):
     """
-    Normal usage: removing a quantity that is less than or equal to the current stock.
+    Normal operation: after adding a known amount of stock, removing a valid
+    quantity should decrease ``product.stock`` to the expected value.
     """
-    product = _make_product(initial_stock)
-    product.remove_stock(remove_qty)
-    assert product.stock == expected_stock
+    _patch_dependencies(monkeypatch)
+
+    # Arrange  create a product with a positive price (price is irrelevant for
+    # stock handling) and give it the required initial stock.
+    prod = Product(name="Widget", price=9.99, category="Tools")
+    prod.add_stock(initial_stock)
+
+    # Act  remove the requested quantity.
+    prod.remove_stock(remove_qty)
+
+    # Assert  the remaining stock matches the expectation.
+    assert prod.stock == expected_stock
 
 
-def test_remove_stock_edge_cases():
+def test_remove_stock_edge_cases(monkeypatch):
     """
-    Edgecase scenarios such as removing the entire stock or handling very large numbers.
+    Edgecase scenarios such as removing zero items, removing the entire stock,
+    and handling very large integer values.
     """
-    # Edge case 1  remove all stock in one go
-    product_all = _make_product(initial_stock=1_000_000)
-    product_all.remove_stock(1_000_000)
-    assert product_all.stock == 0
+    _patch_dependencies(monkeypatch)
 
-    # Edge case 2  remove zero items (should be a noop)
-    product_zero = _make_product(initial_stock=42)
-    product_zero.remove_stock(0)
-    assert product_zero.stock == 42
+    # 1. Removing zero from a nonzero stock should leave the stock unchanged.
+    prod_zero = Product(name="Gadget", price=1.23)
+    prod_zero.add_stock(42)
+    prod_zero.remove_stock(0)
+    assert prod_zero.stock == 42
 
-    # Edge case 3  remove a quantity that leaves exactly one item left
-    product_one_left = _make_product(initial_stock=2)
-    product_one_left.remove_stock(1)
-    assert product_one_left.stock == 1
+    # 2. Removing the exact amount of stock should bring the stock down to zero.
+    prod_exact = Product(name="Gizmo", price=2.34)
+    prod_exact.add_stock(7)
+    prod_exact.remove_stock(7)
+    assert prod_exact.stock == 0
+
+    # 3. Very large stock values should be handled without overflow or loss.
+    huge_number = 10**12  # one trillion
+    prod_huge = Product(name="MegaWidget", price=99.99)
+    prod_huge.add_stock(huge_number)
+    prod_huge.remove_stock(1)
+    assert prod_huge.stock == huge_number - 1
+    # Removing the rest should end at zero.
+    prod_huge.remove_stock(huge_number - 1)
+    assert prod_huge.stock == 0
 
 
-def test_remove_stock_error_cases():
+def test_remove_stock_error_cases(monkeypatch):
     """
-    Verify that the method raises the appropriate exceptions for invalid operations.
+    Verify that the method raises the appropriate exceptions when asked to
+    remove more stock than is available or when supplied with an invalid type.
     """
-    # Case 1  trying to remove more than is available raises ``ValueError``
-    product = _make_product(initial_stock=3)
+    _patch_dependencies(monkeypatch)
+
+    # Setup a product with a known stock level.
+    prod = Product(name="Faulty", price=5.00)
+    prod.add_stock(3)
+
+    # 1. Attempting to remove more than the available stock must raise ``ValueError``.
     with pytest.raises(ValueError) as excinfo:
-        product.remove_stock(5)
+        prod.remove_stock(5)
     assert "Not enough stock" in str(excinfo.value)
 
-    # Case 2  passing a noninteger (e.g., a string) triggers a ``TypeError``
-    product = _make_product(initial_stock=5)
+    # 2. Supplying a noninteger (e.g., a string) should raise ``TypeError`` because
+    # the comparison ``self.stock < qty`` cannot be performed.
     with pytest.raises(TypeError):
-        product.remove_stock("two")
-
-    # Case 3  passing a negative quantity does not raise, but it *adds* stock.
-    # This behaviour is documented by the implementation (no guard against negatives).
-    product = _make_product(initial_stock=10)
-    product.remove_stock(-3)  # stock should increase by 3
-    assert product.stock == 13
+        prod.remove_stock("two")

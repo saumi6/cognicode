@@ -15,7 +15,91 @@ class TestGeneratorGroq:
     def __init__(self, verbose: bool = False):
         self.client = GroqClient()
         self.verbose = verbose
+
+    def analyze_test_failure(self, file_path: str, traceback: str) -> str:
+        """Analyze a test failure using Groq and return a concise diagnosis.
         
+        Args:
+            file_path: Path to the source file whose tests failed.
+            traceback: The raw pytest traceback / error output.
+            
+        Returns:
+            A concise (max 3-sentence) AI-generated diagnosis, or a
+            fallback string if the API call fails.
+        """
+        try:
+            # Read the source code of the failing file
+            source_code = Path(file_path).read_text(encoding="utf-8")
+        except Exception:
+            source_code = "(source code unavailable)"
+
+        prompt = (
+            "You are a senior Python debugger. A developer ran their auto-generated "
+            "pytest tests and they FAILED. Below is the SOURCE CODE of the file under "
+            "test, followed by the RAW PYTEST TRACEBACK.\n\n"
+            "Analyze the failure and respond with EXACTLY 3 sentences:\n"
+            "  1. Which test(s) failed and the immediate error (e.g. AssertionError, TypeError).\n"
+            "  2. The root cause in the source code or the test expectations.\n"
+            "  3. A concrete, actionable fix the developer should apply.\n\n"
+            "Do NOT use markdown formatting. Do NOT exceed 3 sentences.\n\n"
+            f"=== SOURCE CODE ({Path(file_path).name}) ===\n{source_code}\n\n"
+            f"=== PYTEST TRACEBACK ===\n{traceback}"
+        )
+
+        try:
+            response = self.client.generate_content(prompt)
+            if response and response.strip():
+                return response.strip()
+            return "AI Analysis Unavailable: Groq returned an empty response."
+        except Exception as e:
+            return f"AI Analysis Unavailable: {e}"
+
+    def generate_node_summary(self, file_path: str, graph_context: str = "") -> str:
+        """Generate a concise 3-sentence summary of what a Python file does.
+
+        Args:
+            file_path: Absolute path to the Python source file.
+            graph_context: Optional architectural/topological context from the
+                           dependency graph (e.g. dependents, centrality info).
+
+        Returns:
+            A 3-sentence architectural summary, or a fallback string on error.
+        """
+        try:
+            source_code = Path(file_path).read_text(encoding="utf-8")
+        except Exception:
+            return "Summary unavailable: could not read the source file."
+
+        # Build optional graph-context block
+        graph_block = ""
+        if graph_context:
+            graph_block = (
+                f"\n\nARCHITECTURAL CONTEXT: {graph_context}\n"
+                "Use this context to enrich your answer about dependencies "
+                "and the file's role in the wider system."
+            )
+
+        prompt = (
+            "You are a senior software architect onboarding a new developer. "
+            "Below is the full source code of a Python file from a larger project.\n\n"
+            "Provide EXACTLY 3 sentences:\n"
+            "  1. What this file does (its primary responsibility).\n"
+            "  2. What other parts of the system likely depend on it or it depends on.\n"
+            "  3. One key design pattern, risk, or improvement worth noting.\n\n"
+            "Do NOT use markdown formatting. Do NOT exceed 3 sentences.\n\n"
+            f"=== SOURCE CODE ({Path(file_path).name}) ==="
+            f"\n{source_code}"
+            f"{graph_block}"
+        )
+
+        try:
+            response = self.client.generate_content(prompt)
+            if response and response.strip():
+                return response.strip()
+            return "Summary unavailable: Groq returned an empty response."
+        except Exception as e:
+            return f"Summary unavailable: {e}"
+
     def generate_tests(self, file_path: str, function_name: str) -> Dict[str, Any]:
         """Generate test cases for a specific function using Groq."""
         try:
@@ -79,10 +163,22 @@ class TestGeneratorGroq:
         signature = func_info['signature']
         params = func_info.get('parameters', [])
         docstring = func_info.get('docstring', '')
+        module_imports = func_info.get('module_imports', [])
         
         # Determine the source file stem for prompt context
         source_file_stem = Path(file_path).stem
         
+        # ── Dynamic dependency-mocking prompt ────────────────────
+        dependency_prompt = ""
+        if module_imports:
+            imports_str = ", ".join(module_imports)
+            dependency_prompt = (
+                f"\nEXTERNAL DEPENDENCIES DETECTED: {imports_str}\n"
+                "If this function uses any of these external dependencies "
+                "(like an API, database, or library), YOU MUST securely mock "
+                "them using pytest's native 'monkeypatch' fixture.\n"
+            )
+
         # Create a very specific prompt for Groq
         class_context = func_info.get('class_context')
         context_str = ""
@@ -105,6 +201,7 @@ If the class requires dependencies (like other classes), mock them using `unitte
 FUNCTION: {signature}
 DOCSTRING: {docstring}
 {context_str}
+{dependency_prompt}
 
 Generate exactly 3 complete test functions with full implementations:
 
@@ -119,7 +216,7 @@ Requirements:
 - Use pytest.mark.parametrize where appropriate
 - Handle exceptions with pytest.raises (example: `with pytest.raises(ValueError):`). DO NOT pass a `msg=` argument to pytest.raises, as it is not supported in newer versions.
 - For floating point comparisons, usage `pytest.approx` or `math.isclose`. Do NOT inspect precision errors manually.
-- Do NOT import any modules, do not assume any module the user has made, you can import standard modules available in pyhthon only if absolutely necessary, all the necessary modules will be imported retroactively, you just have to give test cases
+- Do NOT manually import custom user modules or files. All required functions will be dynamically loaded by the framework. You may only use standard libraries or pytest fixtures.
 - **CRITICAL: When using `monkeypatch.setattr`, YOU MUST USE THE FULL ABSOLUTE IMPORT PATH to the function being patched.**
   - WRONG: `monkeypatch.setattr("round_currency", lambda x: x)`
   - WRONG: `monkeypatch.setattr("product.round_currency", lambda x: x)`

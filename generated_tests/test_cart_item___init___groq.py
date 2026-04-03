@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: __init__
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-01-31 03:54:28
+Generated on: 2026-04-03 03:41:03
 Source file: cart_item.py
 Function signature: def __init__(self, product: Product, quantity: int = 1)
 """
@@ -21,80 +21,90 @@ from test_repo.cart_item import CartItem
 import pytest
 from unittest.mock import Mock
 
-# The class under test is assumed to be importable from the module where it is defined.
-# Replace `your_module` with the actual module name if needed.
-from your_module import CartItem
+# NOTE: Adjust the import path below to match the actual location of the CartItem class.
+# For example, if the class lives in `myapp/cart_item.py`, use:
+# from myapp.cart_item import CartItem
+from cart_item import CartItem  # <-- replace with the correct module path if needed
+
+
+def _make_instance():
+    """
+    Helper that creates a CartItem instance **without** invoking ``__init__``.
+    satisfying the requirement to instantiate the class before calling ``__init__``.
+    """
+    return CartItem.__new__(CartItem)
 
 
 @pytest.mark.parametrize(
-    "price, quantity",
+    "quantity, expected_quantity",
     [
-        (10.0, 1),          # default quantity
-        (5.5, 3),           # typical multiunit case
-        (0.99, 10),         # many smallprice items
-        (100.0, 2),         # larger price, small quantity
-        (0.0, 5),           # zeroprice product
+        (1, 1),          # explicit default
+        (5, 5),          # typical positive integer
+        (10, 10),        # larger integer
     ],
 )
-def test___init___normal_cases(price, quantity):
-    """Verify that normal initialisation stores the given product and quantity."""
-    # create a lightweight mock product with the required ``price`` attribute
-    product = Mock()
-    product.price = price
+def test___init___normal_cases(quantity, expected_quantity):
+    """
+    Verify that ``CartItem.__init__`` correctly stores the provided ``product``
+    and ``quantity`` for normal, expected inputs.
+    """
+    # Arrange
+    product_mock = Mock()
+    product_mock.price = 9.99  # price is not used in __init__, but realistic
 
-    # instantiate the object **without** invoking __init__, then call __init__ manually
-    item = CartItem.__new__(CartItem)
-    item.__init__(product, quantity)
+    cart_item = _make_instance()
 
-    # the attributes should be exactly what we passed in
-    assert item.product is product
-    assert item.quantity == quantity
+    # Act
+    CartItem.__init__(cart_item, product=product_mock, quantity=quantity)
+
+    # Assert
+    assert cart_item.product is product_mock
+    assert cart_item.quantity == expected_quantity
 
 
 def test___init___edge_cases():
-    """Check boundary conditions such as zero quantity and very large numbers."""
-    # edge case 1  quantity = 0 (allowed by the current implementation)
-    product_zero_qty = Mock()
-    product_zero_qty.price = 12.34
-    item_zero = CartItem.__new__(CartItem)
-    item_zero.__init__(product_zero_qty, 0)
+    """
+    Test edgecase values for ``quantity`` such as zero, a very large number,
+    and a negative integer. The class does not enforce validation, so the
+    attributes should reflect the supplied values.
+    """
+    product_mock = Mock()
+    product_mock.price = 1.23
+
+    # Zero quantity
+    item_zero = _make_instance()
+    CartItem.__init__(item_zero, product=product_mock, quantity=0)
     assert item_zero.quantity == 0
-    assert item_zero.product is product_zero_qty
 
-    # edge case 2  extremely large quantity
+    # Very large quantity
     large_qty = 10_000_000
-    product_large_qty = Mock()
-    product_large_qty.price = 1.23
-    item_large = CartItem.__new__(CartItem)
-    item_large.__init__(product_large_qty, large_qty)
+    item_large = _make_instance()
+    CartItem.__init__(item_large, product=product_mock, quantity=large_qty)
     assert item_large.quantity == large_qty
-    assert item_large.product is product_large_qty
 
-    # edge case 3  product price is negative (some systems allow discounts)
-    product_negative_price = Mock()
-    product_negative_price.price = -5.00
-    item_negative_price = CartItem.__new__(CartItem)
-    item_negative_price.__init__(product_negative_price, 2)
-    assert item_negative_price.product.price == -5.00
-    assert item_negative_price.quantity == 2
+    # Negative quantity (allowed by the current implementation)
+    negative_qty = -3
+    item_negative = _make_instance()
+    CartItem.__init__(item_negative, product=product_mock, quantity=negative_qty)
+    assert item_negative.quantity == negative_qty
 
 
 def test___init___error_cases():
-    """Ensure that clearly invalid inputs raise appropriate exceptions."""
-    valid_product = Mock()
-    valid_product.price = 9.99
+    """
+    Ensure that calling ``CartItem.__init__`` with an incorrect signature
+    raises the appropriate ``TypeError``. Specifically, omitting the required
+    ``product`` argument should trigger the error.
+    """
+    product_mock = Mock()
+    product_mock.price = 5.0
 
-    # 1. quantity must be an int  passing a string should raise TypeError
-    item = CartItem.__new__(CartItem)
+    # Missing the required ``product`` argument
+    cart_item = _make_instance()
     with pytest.raises(TypeError):
-        item.__init__(valid_product, "not-an-int")
+        CartItem.__init__(cart_item)  # type: ignore[arg-type]
 
-    # 2. negative quantity is not sensible  expect ValueError
-    item = CartItem.__new__(CartItem)
-    with pytest.raises(ValueError):
-        item.__init__(valid_product, -3)
-
-    # 3. product must provide a ``price`` attribute  passing None should raise AttributeError
-    item = CartItem.__new__(CartItem)
-    with pytest.raises(AttributeError):
-        item.__init__(None, 1)
+    # Providing a noninteger ``quantity`` does not raise at init time,
+    # but we can still assert that the stored value is exactly what was passed.
+    cart_item_str_qty = _make_instance()
+    CartItem.__init__(cart_item_str_qty, product=product_mock, quantity="not-an-int")  # noqa: E501
+    assert cart_item_str_qty.quantity == "not-an-int"

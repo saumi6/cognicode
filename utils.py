@@ -27,6 +27,7 @@ class FunctionAnalyzer:
             raise ValueError("File must be a Python file (.py)")
         
         self._load_file()
+        self.module_imports = self._extract_module_imports()
     
     def _load_file(self):
         """Load and parse the Python file"""
@@ -93,7 +94,8 @@ class FunctionAnalyzer:
             'decorators': self._get_decorators(function_node),
             'complexity': self._calculate_complexity(function_node),
             'imports_needed': self._get_imports_needed(),
-            'class_context': self._get_class_context(function_node)
+            'class_context': self._get_class_context(function_node),
+            'module_imports': self.module_imports,
         }
 
     def _get_class_context(self, function_node: ast.FunctionDef) -> Optional[Dict[str, str]]:
@@ -283,6 +285,36 @@ class FunctionAnalyzer:
                     imports.append(f"from {module} import {alias.name}")
         
         return imports
+
+    def _extract_module_imports(self) -> List[str]:
+        """Extract top-level external module names from the file's imports.
+
+        Iterates only over direct children of ``self.tree.body`` (i.e.
+        top-level statements) so nested/conditional imports are ignored.
+
+        Returns:
+            Deduplicated list of bare module names,
+            e.g. ``['requests', 'boto3', 'os']``.
+        """
+        seen: set = set()
+        modules: List[str] = []
+
+        for node in self.tree.body:
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    # Take the root package (e.g. 'os.path' -> 'os')
+                    root = alias.name.split('.')[0]
+                    if root not in seen:
+                        seen.add(root)
+                        modules.append(root)
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    root = node.module.split('.')[0]
+                    if root not in seen:
+                        seen.add(root)
+                        modules.append(root)
+
+        return modules
 
 def load_function_dynamically(file_path: str, function_name: str) -> Optional[callable]:
     """

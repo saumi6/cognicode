@@ -45,6 +45,7 @@ class TestResult(BaseModel):
     file_path: str
     status: str # PASSED, FAILED
     error: Optional[str] = None
+    coverage_percent: Optional[float] = None
 
 class TestRunRequest(BaseModel):
     file_path: str
@@ -93,7 +94,7 @@ def analyze_file_impact(request: FileChangeRequest):
 
 @app.get("/graph")
 def get_full_graph():
-    """Return full graph with test status"""
+    """Return full graph with test status and metrics (Contract A)"""
     # 1. Get Graph Data
     nodes = []
     links = []
@@ -101,20 +102,42 @@ def get_full_graph():
     # 2. Get Test Status
     test_results = db.get_latest_results() # {abs_path: STATUS}
     
+    # 3. Ensure complexity scores are current
+    complexity_scores = engine.complexity_scores if hasattr(engine, 'complexity_scores') else {}
+
+    # 4. Get architectural violations
+    arch_violations = engine.architectural_violations if hasattr(engine, 'architectural_violations') else {}
+    
     for node in engine.graph.nodes:
         # node is module name (e.g., 'math_tools')
         # engine.file_map[node] gives absolute path
-        abs_path = engine.file_map.get(node)
+        abs_path = engine.file_map.get(node, "")
         status = "UNKNOWN"
         
         if abs_path and abs_path in test_results:
              status = test_results[abs_path]
         
+        # Pull per-file metrics from DB (defaults to 0.0 for both)
+        db_metrics = db.get_metrics(abs_path) if abs_path else dict(db.DEFAULT_METRICS)
+
+        metrics = {
+            "coverage_percent": db_metrics.get("coverage_percent", 0.0),
+            "flakiness_rate": db_metrics.get("flakiness_rate", 0.0),
+            "complexity_score": complexity_scores.get(node, 0),
+            "vulnerabilities": engine.vulnerabilities.get(node, []) if hasattr(engine, 'vulnerabilities') else []
+        }
+
+        # Override status if this node violates an architectural boundary
+        if node in arch_violations:
+            status = "VIOLATION"
+            metrics["violation_reason"] = arch_violations[node]
+        
         nodes.append({
             "id": node, 
-            "path": engine.file_map.get(node, ""),
+            "path": abs_path,
             "type": "file",
-            "status": status # PASSED, FAILED, UNKNOWN
+            "status": status,
+            "metrics": metrics
         })
         
     for u, v in engine.graph.edges:
@@ -122,6 +145,34 @@ def get_full_graph():
         
     return {"nodes": nodes, "links": links}
 
+# --- Semantic Clone Detection ---
+import cogniserver.clone_detector as clone_detector
+
+@app.get("/clone/scan")
+def scan_clones():
+    """Trigger FAISS semantic clone generation."""
+    try:
+        from .clone_detector import scan_for_clones
+        res = scan_for_clones(engine.file_map)
+        if isinstance(res, dict) and "error" in res:
+            raise HTTPException(status_code=500, detail=res["error"])
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/knowledge/search")
+def search_knowledge_base(q: str):
+    """Trigger FAISS knowledge base semantic search."""
+    try:
+        from .clone_detector import search_code
+        res = search_code(q, engine.file_map)
+        if isinstance(res, dict) and "error" in res:
+            raise HTTPException(status_code=500, detail=res["error"])
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ====================================================================== #
 # --- Test Integration ---
 
 @app.post("/tests/result")
@@ -129,12 +180,75 @@ def record_test_result(result: TestResult):
     """Save test result from test runner"""
     print(f"Payload received from runner: {result.file_path} -> {result.status}")
     db.add_result(result.file_path, result.status, error=result.error)
+
+    # If coverage data was included, persist it into the metrics column
+    if result.coverage_percent is not None:
+        current_metrics = db.get_metrics(result.file_path)
+        current_metrics["coverage_percent"] = result.coverage_percent
+        db.update_metrics(result.file_path, current_metrics)
+        print(f"[Coverage] Saved {result.coverage_percent}% for {result.file_path}")
+
     return {"status": "saved"}
 
 @app.get("/tests/history")
 def get_test_history():
     """Get history of tests"""
     return db.get_history()
+
+# --- AI Summaries ---
+
+# Lazy singleton so we don't pay the Groq-client init cost on every import
+_groq_generator = None
+
+def _get_groq_generator():
+    global _groq_generator
+    if _groq_generator is None:
+        # Import here to keep the server bootable even if groq deps are missing
+        sys.path.insert(0, PROJECT_ROOT)
+        from test_generator_groq import TestGeneratorGroq
+        _groq_generator = TestGeneratorGroq(verbose=False)
+    return _groq_generator
+
+@app.get("/summary/{node_id}")
+def get_node_summary(node_id: str):
+    """Return an AI-generated 3-sentence summary of a file's role."""
+    # Resolve node_id (e.g. "math_tools") to absolute path
+    abs_path = engine.file_map.get(node_id)
+
+    if not abs_path or not os.path.exists(abs_path):
+        # Try as a direct / partial path fallback
+        if os.path.exists(node_id):
+            abs_path = node_id
+        else:
+            raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found in graph.")
+
+    # Build graph-context payload from dependency topology
+    context_payload = ""
+    try:
+        if node_id in engine.graph:
+            in_deg = engine.graph.in_degree(node_id)
+            out_deg = engine.graph.out_degree(node_id)
+
+            if in_deg == 0 and out_deg == 0:
+                role = "an Isolated module (no graph connections)"
+            elif out_deg == 0:
+                role = f"a Leaf utility (0 dependencies, {in_deg} dependent{'s' if in_deg != 1 else ''})"
+            elif in_deg == 0:
+                role = f"an Entry Point (0 dependents, depends on {out_deg} module{'s' if out_deg != 1 else ''})"
+            else:
+                role = f"an Internal module ({in_deg} incoming, {out_deg} outgoing edges)"
+
+            context_payload = f"This file is {role}."
+    except Exception:
+        pass  # graph inspection is best-effort
+
+    try:
+        gen = _get_groq_generator()
+        summary = gen.generate_node_summary(abs_path, graph_context=context_payload)
+    except Exception as e:
+        summary = f"Summary unavailable: {e}"
+
+    return {"summary": summary}
 
 def resolve_file_path(node_id: str) -> str:
     """Helper to resolve node_ID or partial path to absolute path"""

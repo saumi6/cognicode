@@ -92,7 +92,7 @@ echo Commands:
 echo   -vs [path]            Runs Bandit vulnerability scan on a file or directory.
 echo   -ss [args]            Runs detect-secrets with the provided arguments.
 echo                         Example: cogni -ss --files tests/test_key.py
-echo   -f "[search_text] test"    Runs main_search.py with the given search text.
+echo   -f "[search_text]"    Runs main_search.py with the given search text.
 echo   -t [args]             Generates and runs tests using test.py.
 echo                         Example: cogni -t my_code.py my_func --verbose
 echo.

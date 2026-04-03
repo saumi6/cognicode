@@ -4,23 +4,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cognicode Dashboard</title>
+    <title>CogniCode — Developer Intelligence Portal</title>
+    <meta name="description" content="CogniCode multi-view dashboard for architectural analysis, test management, and developer intelligence.">
     <script src="https://unpkg.com/force-graph"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-color: #0d1117;
             --sidebar-color: #161b22;
+            --nav-color: #0d1117;
             --text-color: #c9d1d9;
+            --text-muted: #8b949e;
             --accent-color: #58a6ff;
             --border-color: #30363d;
             --success-color: #238636;
             --failure-color: #da3633;
             --unknown-color: #58a6ff;
+            --nav-width: 72px;
+            --panel-width: 400px;
+            --hover-bg: rgba(88, 166, 255, 0.08);
+            --active-bg: rgba(88, 166, 255, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        /* Standard custom scrollbar for dark mode */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color); 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color); 
+            border-radius: 5px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #484f58; 
         }
 
         body {
             margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             overflow: hidden;
@@ -28,11 +59,149 @@
             height: 100vh;
         }
 
-        #sidebar {
-            width: 400px;
-            /* Wider sidebar as requested */
+        /* ===== MAIN NAVIGATION ===== */
+
+        #main-nav {
+            width: var(--nav-width);
             flex-shrink: 0;
-            /* Prevent resizing */
+            background: var(--nav-color);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16px 0;
+            z-index: 100;
+            position: relative;
+        }
+
+        .nav-logo {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #58a6ff 0%, #3b82f6 50%, #8b5cf6 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 28px;
+            box-shadow: 0 4px 12px rgba(88, 166, 255, 0.3);
+            cursor: default;
+            user-select: none;
+        }
+
+        .nav-divider {
+            width: 32px;
+            height: 1px;
+            background: var(--border-color);
+            margin-bottom: 16px;
+        }
+
+        .nav-item {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            margin-bottom: 8px;
+            font-size: 1.35rem;
+            color: var(--text-muted);
+            transition: all 0.2s ease;
+            position: relative;
+            border: 1px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: var(--hover-bg);
+            color: var(--accent-color);
+            transform: scale(1.05);
+        }
+
+        .nav-item.active {
+            background: var(--active-bg);
+            color: var(--accent-color);
+            border-color: rgba(88, 166, 255, 0.2);
+            box-shadow: 0 0 12px rgba(88, 166, 255, 0.1);
+        }
+
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: -12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 20px;
+            background: var(--accent-color);
+            border-radius: 0 3px 3px 0;
+        }
+
+        .nav-tooltip {
+            position: absolute;
+            left: calc(100% + 12px);
+            top: 50%;
+            transform: translateY(-50%);
+            background: #1c2128;
+            color: var(--text-color);
+            font-size: 0.75rem;
+            font-weight: 500;
+            padding: 6px 10px;
+            border-radius: 6px;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            z-index: 200;
+        }
+
+        .nav-item:hover .nav-tooltip {
+            opacity: 1;
+        }
+
+        .nav-spacer {
+            flex-grow: 1;
+        }
+
+        .nav-item-bottom {
+            margin-top: auto;
+            margin-bottom: 0;
+        }
+
+        /* ===== MAIN CONTENT AREA ===== */
+
+        #app-content {
+            flex-grow: 1;
+            display: flex;
+            min-width: 0;
+            position: relative;
+        }
+
+        /* ===== VIEW CONTAINERS ===== */
+
+        .view-container {
+            display: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        .view-container.active {
+            display: flex;
+        }
+
+        /* ===== GRAPH VIEW (existing layout preserved) ===== */
+
+        #view-graph {
+            flex-direction: row;
+        }
+
+        #details-panel {
+            width: var(--panel-width);
+            flex-shrink: 0;
             background-color: var(--sidebar-color);
             border-right: 1px solid var(--border-color);
             padding: 20px;
@@ -41,20 +210,30 @@
             z-index: 10;
             box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
             overflow-y: auto;
+            transition: width 0.3s ease, padding 0.3s ease;
+        }
+
+        #details-panel.collapsed {
+            width: 0;
+            padding: 0;
+            overflow: hidden;
+            border-right: none;
         }
 
         #graph-container {
             flex-grow: 1;
             position: relative;
+            transition: width 0.3s ease;
         }
 
         h1 {
-            font-size: 1.2rem;
-            margin-bottom: 20px;
+            font-size: 1.1rem;
+            margin: 0 0 20px 0;
             color: var(--accent-color);
             display: flex;
             align-items: center;
             gap: 10px;
+            font-weight: 600;
         }
 
         .status-dot {
@@ -67,23 +246,15 @@
         }
 
         @keyframes pulse {
-            0% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.5;
-            }
-
-            100% {
-                opacity: 1;
-            }
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
         }
 
         .card {
             background-color: #21262d;
             border: 1px solid var(--border-color);
-            border-radius: 6px;
+            border-radius: 8px;
             padding: 15px;
             margin-bottom: 15px;
         }
@@ -96,26 +267,63 @@
 
         .metric-label {
             font-size: 0.8rem;
-            color: #8b949e;
+            color: var(--text-muted);
         }
 
         #search-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            background: var(--sidebar-color);
-            padding: 15px;
+            margin-bottom: 15px;
+            background: #21262d;
+            padding: 10px 15px;
             border-radius: 8px;
             border: 1px solid var(--border-color);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-            min-width: 300px;
         }
 
         #search-container h3 {
-            margin: 0 0 10px 0;
-            font-size: 0.9rem;
+            margin: 0 0 8px 0;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        #graph-filters {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(22, 27, 34, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
+            border-radius: 30px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            transition: opacity 0.3s ease;
+        }
+
+        .filter-btn {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid transparent;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: auto;
+            margin: 0;
+        }
+
+        .filter-btn:hover {
+            color: var(--text-color);
+            background: rgba(255,255,255,0.05);
+        }
+
+        .filter-btn.active {
+            background: var(--active-bg);
             color: var(--accent-color);
+            border-color: rgba(88, 166, 255, 0.3);
         }
 
         #node-details {
@@ -130,8 +338,10 @@
             border-radius: 6px;
             cursor: pointer;
             font-weight: 600;
+            font-family: inherit;
             width: 100%;
             margin-top: 10px;
+            transition: background-color 0.15s ease;
         }
 
         button:hover {
@@ -173,74 +383,1552 @@
             margin-top: 10px;
             display: none;
         }
+
+        /* Coverage bar */
+        #coverage-indicator {
+            margin-top: 12px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            font-size: 0.85rem;
+            transition: all 0.3s ease;
+        }
+
+        #coverage-indicator .cov-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        #coverage-indicator .cov-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-muted);
+            font-weight: 400;
+            font-size: 0.8rem;
+        }
+
+        #coverage-indicator .cov-percent {
+            font-weight: 700;
+            font-size: 0.95rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .cov-bar-track {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .cov-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.3s ease;
+            min-width: 0;
+        }
+
+        #coverage-indicator.cov-high { border-color: #2ea04344; }
+        #coverage-indicator.cov-high .cov-percent { color: #7ee787; }
+        #coverage-indicator.cov-high .cov-bar-fill { background: linear-gradient(90deg, #238636, #7ee787); }
+
+        #coverage-indicator.cov-medium { border-color: #d2992244; }
+        #coverage-indicator.cov-medium .cov-percent { color: #e3b341; }
+        #coverage-indicator.cov-medium .cov-bar-fill { background: linear-gradient(90deg, #9e6a03, #e3b341); }
+
+        #coverage-indicator.cov-low { border-color: #da363344; }
+        #coverage-indicator.cov-low .cov-percent { color: #f85149; }
+        #coverage-indicator.cov-low .cov-bar-fill { background: linear-gradient(90deg, #da3633, #f85149); }
+
+        #coverage-indicator.cov-none .cov-percent { color: var(--text-muted); }
+        #coverage-indicator.cov-none .cov-bar-fill { background: var(--border-color); }
+
+        /* Architecture Violation banner */
+        #violation-banner {
+            display: none;
+            margin-top: 12px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            background: rgba(255, 165, 0, 0.08);
+            border: 1px solid rgba(255, 165, 0, 0.45);
+            color: #FFA500;
+            font-size: 0.82rem;
+            font-weight: 600;
+            line-height: 1.45;
+            animation: violationPulse 2s ease-in-out infinite;
+        }
+
+        #violation-banner .viol-icon {
+            font-size: 1rem;
+            margin-right: 6px;
+        }
+
+        @keyframes violationPulse {
+            0%, 100% { box-shadow: 0 0 0 rgba(255, 165, 0, 0); }
+            50% { box-shadow: 0 0 12px rgba(255, 165, 0, 0.2); }
+        }
+
+        /* Blast Radius styles */
+        #blast-radius {
+            margin-top: 12px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        #blast-radius .br-icon { font-size: 1.1rem; flex-shrink: 0; }
+        #blast-radius .br-label { color: var(--text-muted); font-weight: 400; margin-right: 4px; }
+        #blast-radius .br-value { font-variant-numeric: tabular-nums; }
+
+        #blast-radius.risk-safe { border-color: #2ea04366; background: rgba(46, 160, 67, 0.06); }
+        #blast-radius.risk-safe .br-value { color: #7ee787; }
+        #blast-radius.risk-safe .br-icon { color: #7ee787; }
+
+        #blast-radius.risk-moderate { border-color: #d2992266; background: rgba(210, 153, 34, 0.08); }
+        #blast-radius.risk-moderate .br-value { color: #e3b341; }
+        #blast-radius.risk-moderate .br-icon { color: #e3b341; }
+
+        #blast-radius.risk-high { border-color: #da363366; background: rgba(218, 54, 51, 0.08); animation: risk-pulse 2s ease-in-out infinite; }
+        #blast-radius.risk-high .br-value { color: #f85149; }
+        #blast-radius.risk-high .br-icon { color: #f85149; }
+
+        @keyframes risk-pulse {
+            0%, 100% { border-color: #da363366; }
+            50% { border-color: #da3633aa; }
+        }
+
+        #blast-radius.risk-none .br-value { color: var(--text-muted); }
+        #blast-radius.risk-none .br-icon { color: var(--text-muted); }
+
+        .graph-tooltip {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: 0.8rem;
+        }
+
+        /* ===== QA LEDGER VIEW ===== */
+
+        #view-ledger {
+            flex-direction: column;
+            background: var(--bg-color);
+        }
+
+        .view-header {
+            padding: 28px 36px 20px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--sidebar-color);
+        }
+
+        .view-header h2 {
+            margin: 0 0 4px 0;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .view-header p {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .ledger-content {
+            flex: 1;
+            padding: 28px 36px;
+            overflow-y: auto;
+        }
+
+        .ledger-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        .stat-card {
+            background: #21262d;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            transition: border-color 0.2s ease, transform 0.15s ease;
+        }
+
+        .stat-card:hover {
+            border-color: var(--accent-color);
+            transform: translateY(-1px);
+        }
+
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+
+        .stat-value.green { color: #7ee787; }
+        .stat-value.red { color: #f85149; }
+        .stat-value.blue { color: var(--accent-color); }
+        .stat-value.yellow { color: #e3b341; }
+
+        .ledger-table-wrap {
+            background: #21262d;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .ledger-table-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .ledger-table-header h3 {
+            margin: 0;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .ledger-table-header .badge {
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: 10px;
+            background: rgba(88, 166, 255, 0.15);
+            color: var(--accent-color);
+            font-weight: 600;
+        }
+
+        table.ledger-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        table.ledger-table thead th {
+            text-align: left;
+            padding: 12px 20px;
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.15);
+        }
+
+        table.ledger-table tbody tr {
+            border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+            transition: background 0.12s ease;
+        }
+
+        table.ledger-table tbody tr:hover {
+            background: rgba(88, 166, 255, 0.04);
+        }
+
+        table.ledger-table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        table.ledger-table td {
+            padding: 12px 20px;
+            color: var(--text-color);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status-badge.passed {
+            background: rgba(46, 160, 67, 0.15);
+            color: #7ee787;
+        }
+
+        .status-badge.failed {
+            background: rgba(218, 54, 51, 0.15);
+            color: #f85149;
+        }
+
+        .status-badge.unknown {
+            background: rgba(110, 118, 129, 0.15);
+            color: var(--text-muted);
+        }
+
+        .flaky-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            background: rgba(227, 179, 65, 0.18);
+            color: #e3b341;
+            margin-left: 6px;
+            letter-spacing: 0.3px;
+            animation: flaky-glow 2s ease-in-out infinite;
+        }
+
+        @keyframes flaky-glow {
+            0%, 100% { box-shadow: 0 0 0 rgba(227, 179, 65, 0); }
+            50% { box-shadow: 0 0 8px rgba(227, 179, 65, 0.25); }
+        }
+
+        .chart-wrapper {
+            background: #21262d;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+        }
+
+        .chart-wrapper h3 {
+            margin: 0 0 16px 0;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ai-brief-btn {
+            background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+            color: #fff;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-family: inherit;
+            font-size: 0.82rem;
+            width: 100%;
+            margin-top: 12px;
+            transition: all 0.2s ease;
+            display: none;
+            letter-spacing: 0.2px;
+        }
+
+        .ai-brief-btn:hover {
+            background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35);
+        }
+
+        .ai-brief-btn:active {
+            transform: translateY(0);
+        }
+
+        .ai-brief-btn.loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .ai-synopsis-card {
+            margin-top: 12px;
+            padding: 14px 16px;
+            background: rgba(139, 92, 246, 0.08);
+            border: 1px solid rgba(139, 92, 246, 0.25);
+            border-radius: 8px;
+            font-size: 0.82rem;
+            line-height: 1.55;
+            color: var(--text-color);
+            display: none;
+            animation: synopsisFadeIn 0.35s ease;
+        }
+
+        .ai-synopsis-card .synopsis-header {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #a78bfa;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        @keyframes synopsisFadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state .empty-icon {
+            font-size: 2.5rem;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+
+        .empty-state p {
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+        /* ===== SETTINGS VIEW ===== */
+
+        #view-settings {
+            flex-direction: column;
+            background: var(--bg-color);
+        }
+
+        .settings-content {
+            flex: 1;
+            padding: 28px 36px;
+            overflow-y: auto;
+            max-width: 720px;
+        }
+
+        .settings-section {
+            background: #21262d;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .settings-section h3 {
+            margin: 0 0 4px 0;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .settings-section .section-desc {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            margin: 0 0 20px 0;
+        }
+
+        .setting-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 0;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .setting-row:first-of-type {
+            border-top: none;
+            padding-top: 0;
+        }
+
+        .setting-info {
+            flex: 1;
+            margin-right: 20px;
+        }
+
+        .setting-label {
+            font-size: 0.88rem;
+            font-weight: 500;
+            color: var(--text-color);
+            margin-bottom: 2px;
+        }
+
+        .setting-hint {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .setting-control input[type="text"],
+        .setting-control input[type="password"] {
+            background: #0d1117;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-color);
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            font-family: 'Inter', monospace;
+            width: 280px;
+            transition: border-color 0.2s ease;
+        }
+
+        .setting-control input[type="text"]:focus,
+        .setting-control input[type="password"]:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+        }
+
+        .setting-control input[type="range"] {
+            width: 200px;
+            accent-color: var(--accent-color);
+            cursor: pointer;
+        }
+
+        .slider-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .slider-value {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--accent-color);
+            min-width: 36px;
+            text-align: center;
+            background: rgba(88, 166, 255, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .settings-save-btn {
+            background: linear-gradient(135deg, #238636, #2ea043);
+            width: auto;
+            padding: 10px 28px;
+            font-size: 0.88rem;
+            border-radius: 8px;
+            margin-top: 16px;
+        }
+
+        .settings-save-btn:hover {
+            background: linear-gradient(135deg, #2ea043, #3fb950);
+        }
+
+        .settings-save-btn.saved {
+            background: linear-gradient(135deg, #238636, #238636) !important;
+            pointer-events: none;
+        }
+
+        #settings-toast {
+            position: fixed;
+            bottom: 28px;
+            right: 28px;
+            background: #1c2128;
+            border: 1px solid #238636;
+            border-radius: 10px;
+            padding: 14px 22px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.88rem;
+            font-weight: 500;
+            color: #7ee787;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 20px rgba(35, 134, 54, 0.15);
+            z-index: 2000;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease;
+            pointer-events: none;
+        }
+
+        #settings-toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        #settings-toast .toast-icon {
+            font-size: 1.2rem;
+        }
+
+        #settings-toast .toast-text {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+
+        #settings-toast .toast-title {
+            font-weight: 600;
+            color: #7ee787;
+        }
+
+        #settings-toast .toast-sub {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        .setting-control .unsaved-dot {
+            display: none;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            position: absolute;
+            top: -2px;
+            right: -2px;
+        }
+
+        /* ===== VIEW TRANSITION ===== */
+
+        .view-container {
+            animation: viewFadeIn 0.25s ease;
+        }
+
+        @keyframes viewFadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 
 <body>
 
-    <div id="sidebar">
-        <h1>
-            <div class="status-dot"></div>
-            Cognicode Control Center
-        </h1>
+    <!-- ===== MAIN NAVIGATION ===== -->
+    <nav id="main-nav">
+        <div class="nav-logo">C</div>
+        <div class="nav-divider"></div>
 
-        <div class="card">
-            <div class="metric" id="node-count">-</div>
-            <div class="metric-label">Tracked Files</div>
+        <div class="nav-item active" id="nav-graph" onclick="switchView('graph')" role="button" tabindex="0">
+            🕸️
+            <span class="nav-tooltip">Graph Explorer</span>
+        </div>
+        <div class="nav-item" id="nav-ledger" onclick="switchView('ledger')" role="button" tabindex="0">
+            📊
+            <span class="nav-tooltip">QA Ledger</span>
+        </div>
+        <div class="nav-item" id="nav-security" onclick="switchView('security')" role="button" tabindex="0">
+            🛡️
+            <span class="nav-tooltip">Security</span>
+        </div>
+        <div class="nav-item" id="nav-architect" onclick="switchView('architect')" role="button" tabindex="0">
+            📐
+            <span class="nav-tooltip">Architect</span>
+        </div>
+        <div class="nav-item" id="nav-knowledge" onclick="switchView('knowledge')" role="button" tabindex="0">
+            🧠
+            <span class="nav-tooltip">Knowledge</span>
+        </div>
+        <div class="nav-item" id="nav-clones" onclick="switchView('clones')" role="button" tabindex="0">
+            🧬
+            <span class="nav-tooltip">Semantic Clones</span>
+        </div>
+        <div class="nav-item" id="nav-activity" onclick="switchView('activity')" role="button" tabindex="0">
+            📜
+            <span class="nav-tooltip">Activity Log</span>
+        </div>
+        <div class="nav-item" id="nav-settings" onclick="switchView('settings')" role="button" tabindex="0">
+            ⚙️
+            <span class="nav-tooltip">Settings</span>
+        </div>
+    </nav>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <div id="app-content">
+
+        <!-- ===== VIEW: Graph Explorer ===== -->
+        <div class="view-container active" id="view-graph" style="position: relative;">
+            
+            <!-- Hidden Floating Toggle Button -->
+            <div id="sidebar-toggle" style="position:absolute; top:20px; left:80px; z-index:100; display:none;">
+                <button class="filter-btn" onclick="toggleDetailsPanel()" style="padding:8px 16px; font-size:1rem; margin:0; background:var(--sidebar-color); box-shadow:0 4px 12px rgba(0,0,0,0.5); cursor:pointer;">▶ Control Center</button>
+            </div>
+
+            <div id="details-panel">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+                    <h1 style="margin:0;">
+                        <div class="status-dot"></div>
+                        Control Center
+                    </h1>
+                    <button class="filter-btn" style="padding:4px 10px; font-size:1.2rem; margin:0;" title="Collapse Panel" onclick="toggleDetailsPanel()">◀</button>
+                </div>
+
+                <div id="search-container" class="visible">
+                    <h3>🔍 Search Nodes</h3>
+                    <input type="text" id="search-box" placeholder="Type to search..."
+                        style="width: 100%; padding: 8px; background: #000; color: #0f0; border: 1px solid #30363d; border-radius: 4px; font-family: monospace; font-size: 0.85rem; box-sizing: border-box;" />
+                    <div id="search-results" style="max-height: 150px; overflow-y: auto; margin-top: 8px; font-size: 0.8rem;"></div>
+                </div>
+
+                <div class="card">
+                    <div class="metric" id="node-count">-</div>
+                    <div class="metric-label">Tracked Files</div>
+                </div>
+
+                <div class="card" id="node-details">
+                    <h3>Selected Module</h3>
+                    <p id="selected-name" style="color: var(--text-muted); font-style: italic;">Click a node to manage</p>
+                    <p id="selected-path" style="font-size: 0.75rem; word-break: break-all; color: var(--text-muted);"></p>
+
+                    <div id="violation-banner">
+                        <span class="viol-icon">⚠️</span>
+                        <span id="violation-text">Architecture Violation</span>
+                    </div>
+
+                    <button id="ai-brief-btn" class="ai-brief-btn" onclick="fetchAISummary()">✨ Brief Me (AI Synopsis)</button>
+                    <div id="ai-synopsis-card" class="ai-synopsis-card">
+                        <div class="synopsis-header">✨ AI Synopsis</div>
+                        <div id="ai-synopsis-text"></div>
+                    </div>
+
+                    <div id="blast-radius" class="risk-none">
+                        <span class="br-icon">🎯</span>
+                        <span class="br-label">Blast Radius:</span>
+                        <span class="br-value" id="blast-radius-value">-- files affected</span>
+                    </div>
+
+                    <div id="coverage-indicator" class="cov-none">
+                        <div class="cov-header">
+                            <span class="cov-label">📊 Coverage</span>
+                            <span class="cov-percent" id="cov-percent-value">--%</span>
+                        </div>
+                        <div class="cov-bar-track">
+                            <div class="cov-bar-fill" id="cov-bar-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <div id="test-status-indicator"></div>
+
+                    <button id="run-test-btn" class="run-test-btn" style="display: none;" onclick="triggerTest()">
+                        ▶ Run Tests
+                    </button>
+                </div>
+
+                <div class="card">
+                    <h3>Terminal Output <button onclick="popoutTerminal()" style="float: right; font-size: 0.7rem;">🗖 Pop-out</button></h3>
+                    <div id="terminal-output"
+                        style="background-color: #000; color: #0f0; font-family: monospace; padding: 10px; height: 300px; overflow-y: auto; border-radius: 4px; font-size: 0.8rem; white-space: pre-wrap;">
+                        Click "Run Tests" to see output here...
+                    </div>
+                </div>
+
+                <div style="margin-top: auto;">
+                    <button onclick="forceRefresh()">Force Refresh Graph</button>
+                </div>
+            </div>
+
+            <div id="graph-container"></div>
+            
+            <!-- Floating Graph Overlays Menu -->
+            <div id="graph-filters" style="position: absolute; bottom: 30px; right: 30px; z-index: 1000; background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(8px); padding: 8px; border-radius: 12px; border: 1px solid var(--border-color); display: flex; gap: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
+                <button class="filter-btn active" onclick="setGraphMode('default')" id="btn-mode-default">Default</button>
+                <button class="filter-btn" onclick="setGraphMode('status')" id="btn-mode-status">Test Status</button>
+                <button class="filter-btn" onclick="setGraphMode('coverage')" id="btn-mode-coverage">Coverage</button>
+                <button class="filter-btn" onclick="setGraphMode('blast')" id="btn-mode-blast">Blast Radius</button>
+                <button class="filter-btn" onclick="setGraphMode('violations')" id="btn-mode-violations">Violations</button>
+            </div>
+
         </div>
 
-        <div class="card" id="node-details">
-            <h3>Selected Module</h3>
-            <p id="selected-name" style="color: #8b949e; font-style: italic;">Click a node to manage</p>
-            <p id="selected-path" style="font-size: 0.75rem; word-break: break-all; color: #8b949e;"></p>
+        <!-- ===== VIEW: QA Ledger ===== -->
+        <div class="view-container" id="view-ledger">
 
-            <div id="test-status-indicator"></div>
+            <div class="view-header">
+                <h2>📊 QA Ledger — Test History</h2>
+                <p>Track and audit every test run across your codebase.</p>
+            </div>
 
-            <button id="run-test-btn" class="run-test-btn" style="display: none;" onclick="triggerTest()">
-                ▶ Run Tests
-            </button>
+            <div class="ledger-content">
+                <div class="ledger-stats">
+                    <div class="stat-card">
+                        <div class="stat-value blue" id="ledger-total">--</div>
+                        <div class="stat-label">Total Runs</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value green" id="ledger-passed">--</div>
+                        <div class="stat-label">Passed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value red" id="ledger-failed">--</div>
+                        <div class="stat-label">Failed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value yellow" id="ledger-rate">--%</div>
+                        <div class="stat-label">Pass Rate</div>
+                    </div>
+                </div>
+
+                <div class="chart-wrapper" style="position: relative; width: 100%; height: 350px;">
+                    <h3>📈 Test History Timeline</h3>
+                    <canvas id="historyChart"></canvas>
+                </div>
+
+                <div class="ledger-table-wrap">
+                    <div class="ledger-table-header">
+                        <h3>Recent Test Runs</h3>
+                        <span class="badge" id="ledger-badge">LIVE</span>
+                    </div>
+                    <table class="ledger-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>File</th>
+                                <th>Module</th>
+                                <th>Status</th>
+                                <th>Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ledger-tbody">
+                            <tr>
+                                <td colspan="5">
+                                    <div class="empty-state">
+                                        <div class="empty-icon">📋</div>
+                                        <p>No test history yet. Run some tests to populate this ledger.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
         </div>
 
+        <!-- ===== VIEW: Security ===== -->
+        <div class="view-container" id="view-security" style="flex-direction: column; overflow-y: auto; background: var(--bg-color);">
+            <div class="view-header">
+                <h2>🛡️ Security Command Center</h2>
+                <p>Track vulnerabilities and security warnings across your architecture.</p>
+            </div>
+            <div class="ledger-content">
+                <div class="ledger-stats">
+                    <div class="stat-card">
+                        <div class="stat-value red" id="sec-high">0</div>
+                        <div class="stat-label">High Severity</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value yellow" id="sec-med">0</div>
+                        <div class="stat-label">Medium Severity</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value blue" id="sec-low">0</div>
+                        <div class="stat-label">Low Severity</div>
+                    </div>
+                </div>
 
-        <div class="card">
-            <h3>Terminal Output <button onclick="popoutTerminal()" style="float: right; font-size: 0.7rem;">🗖
-                    Pop-out</button></h3>
-            <div id="terminal-output"
-                style="background-color: #000; color: #0f0; font-family: monospace; padding: 10px; height: 300px; overflow-y: auto; border-radius: 4px; font-size: 0.8rem; white-space: pre-wrap;">
-                Click "Run Tests" to see output here...
+                <div class="ledger-table-wrap">
+                    <div class="ledger-table-header">
+                        <h3>Vulnerability Report</h3>
+                        <button onclick="loadSecurityData()" class="settings-save-btn" style="margin: 0; padding: 6px 12px; font-size: 0.75rem;">Refresh Scan</button>
+                    </div>
+                    <table class="ledger-table">
+                        <thead>
+                            <tr>
+                                <th>Severity</th>
+                                <th>File</th>
+                                <th>Line</th>
+                                <th>Issue / Rule</th>
+                            </tr>
+                        </thead>
+                        <tbody id="security-tbody">
+                            <tr>
+                                <td colspan="4">
+                                    <div class="empty-state">
+                                        <div class="empty-icon">🛡️</div>
+                                        <p>Loading security scan...</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <div class="card">
-            <h3>Recent Activity</h3>
-            <div id="activity-log" style="max-height: 200px; overflow-y: auto;">
-                <div class="log-entry">Waiting for activity...</div>
+        <!-- ===== VIEW: Architect ===== -->
+        <div class="view-container" id="view-architect" style="background:#0d1117; flex-direction: column;">
+            <div class="view-header">
+                <h2>📐 The "What-If" Architect Simulator</h2>
+                <p>Visualize direct top-down dependencies and bottom-up blast radius vectors.</p>
+            </div>
+            <div style="display:flex; flex:1; overflow:hidden;">
+                <!-- Node selection panel -->
+                <div style="width:300px; border-right:1px solid var(--border-color); padding: 20px; overflow-y:auto;">
+                    <h3 style="margin-top:0;">Select a Module</h3>
+                    <input type="text" id="architect-search" placeholder="Filter modules..." oninput="filterArchitectNodes()"
+                        style="width:100%; padding:8px; margin-bottom:12px; background:#000; border:1px solid var(--border-color); color:#c9d1d9; border-radius:4px;" />
+                    <ul id="architect-node-list" style="list-style-type:none; padding:0; margin:0; font-size:0.85rem; color:#8b949e;">
+                        <!-- JS populated -->
+                    </ul>
+                </div>
+                <!-- Tree visualization panel -->
+                <div style="flex:1; padding: 20px 40px; overflow-y:auto; background:#0d1117;">
+                    <h3 id="architect-active-node" style="color:var(--accent-color); font-size:1.3rem; margin-top:0;">No module selected</h3>
+                    <div style="background:#161b22; padding:16px; border-radius:8px; border:1px solid #30363d; margin-bottom:20px; font-size:0.9rem;">
+                        <span style="color:#7ee787; font-weight:bold;">Blast Radius:</span> <span id="architect-blast-score">0</span>
+                    </div>
+
+                    <div style="display:flex; gap: 40px;">
+                        <div style="flex:1;">
+                            <h4 style="border-bottom:1px solid var(--border-color); padding-bottom:8px; color:#c9d1d9;">⬇️ Top-Down (Files I depend on)</h4>
+                            <div id="architect-top-down" style="font-family:monospace; font-size:0.8rem; color:#8b949e; white-space:pre-wrap;">Select a node...</div>
+                        </div>
+                        <div style="flex:1;">
+                            <h4 style="border-bottom:1px solid var(--border-color); padding-bottom:8px; color:#c9d1d9;">⬆️ Bottom-Up (Files depending on me)</h4>
+                            <div id="architect-bottom-up" style="font-family:monospace; font-size:0.8rem; color:#8b949e; white-space:pre-wrap;">Select a node...</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div style="margin-top: auto;">
-            <button onclick="forceRefresh()">Force Refresh Graph</button>
+        <!-- ===== VIEW: Knowledge Base ===== -->
+        <div class="view-container" id="view-knowledge" style="background:#0d1117; flex-direction: column; align-items:center;">
+            <div style="max-width: 800px; width:100%; padding: 60px 20px;">
+                <h2 style="font-size:2rem; text-align:center; color:var(--text-color); margin-bottom:10px;">🧠 Semantic Knowledge Base</h2>
+                <p style="text-align:center; color:var(--text-muted); margin-bottom:40px;">Graph intelligence powered by Gemini & FAISS embeddings.</p>
+
+                <div style="display:flex; gap:10px; margin-bottom:40px;">
+                    <input type="text" id="kb-search-input" placeholder="Search codebase semantics... (e.g. 'how are passwords hashed?')" 
+                        style="flex:1; padding: 14px 20px; font-size:1.1rem; border-radius:30px; border:1px solid #58a6ff; background:#161b22; color:#c9d1d9; outline:none;"
+                        onkeydown="if(event.key==='Enter') executeKBSearch()" />
+                    <button class="settings-save-btn" style="margin:0; border-radius:30px; padding: 0 24px;" onclick="executeKBSearch()">Search</button>
+                </div>
+
+                <div id="kb-results-container">
+                    <div class="empty-state">
+                        <div class="empty-icon">🔍</div>
+                        <p>Ask a question about the logic in your code to begin.</p>
+                    </div>
+                </div>
+            </div>
         </div>
+
+        <!-- ===== VIEW: Semantic Clones ===== -->
+        <div class="view-container" id="view-clones" style="background:#0d1117; flex-direction: column; align-items:center;">
+            <div style="max-width: 800px; width:100%; padding: 60px 20px;">
+                <h2 style="font-size:2rem; text-align:center; color:var(--text-color); margin-bottom:10px;">🧬 Semantic Clone Detector</h2>
+                <p style="text-align:center; color:var(--text-muted); margin-bottom:40px;">Mathematically detect duplicated logic via FAISS and Google Gemini embeddings. Detects copy-pasted or structurally identical code even if variable names differ.</p>
+
+                <div style="text-align:center; margin-bottom: 40px;">
+                    <button class="settings-save-btn" id="clone-scan-btn" onclick="runCloneScan()" style="background-color:#8957e5; border-color:#8957e5; font-size:1.1rem; padding:12px 30px;">
+                        🔬 Run Global Codebase Scan
+                    </button>
+                </div>
+                
+                <div style="background:#161b22; border:1px solid #30363d; border-radius:10px; padding:24px;">
+                    <h3 style="margin:0 0 16px 0; color:#c9d1d9;">Clone Index Results</h3>
+                    <ul id="clone-results-list" style="margin:0; padding-left:0; list-style-type:none; font-size:0.95rem; display:flex; flex-direction:column; gap:12px;">
+                        <li style="color:var(--text-muted); text-align:center; padding:20px;">Run scan to discover hidden duplication...</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== VIEW: Activity Log ===== -->
+        <div class="view-container" id="view-activity" style="background:#0d1117; flex-direction: column; align-items:center;">
+            <div style="max-width: 800px; width:100%; padding: 60px 20px;">
+                <h2 style="font-size:2rem; text-align:center; color:var(--text-color); margin-bottom:10px;">📜 Audit & Activity Log</h2>
+                <p style="text-align:center; color:var(--text-muted); margin-bottom:40px;">Real-time feed of graph computations, node discoveries, and system alerts.</p>
+                <div style="background:#161b22; border:1px solid #30363d; border-radius:10px; padding:24px; min-height: 400px;">
+                    <div id="activity-log" style="overflow-y: auto; display:flex; flex-direction:column; gap:8px;">
+                        <div class="log-entry" style="color:var(--text-muted);">Waiting for activity...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== VIEW: Settings ===== -->
+        <div class="view-container" id="view-settings">
+
+            <div class="view-header">
+                <h2>⚙️ Settings</h2>
+                <p>Configure your CogniCode instance and connected services.</p>
+            </div>
+
+            <div class="settings-content">
+                <form id="settings-form" onsubmit="event.preventDefault(); saveSettings();">
+                    <div class="settings-section">
+                        <h3>🔑 API Configuration</h3>
+                        <p class="section-desc">Manage external service connections for AI-powered test generation.</p>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-label">Groq API Key</div>
+                                <div class="setting-hint">Required for AI test generation. Get yours at console.groq.com</div>
+                            </div>
+                            <div class="setting-control">
+                                <input type="password" id="setting-groq-key" placeholder="gsk_••••••••••••••••" autocomplete="off" />
+                            </div>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-label">API Base URL</div>
+                                <div class="setting-hint">CogniCode server endpoint (default: localhost:8000)</div>
+                            </div>
+                            <div class="setting-control">
+                                <input type="text" id="setting-api-url" value="http://localhost:8000" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3>🎚️ Quality Thresholds</h3>
+                        <p class="section-desc">Tune the sensitivity of pass/fail reporting and risk thresholds.</p>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-label">Pass Threshold</div>
+                                <div class="setting-hint">Minimum percentage of tests that must pass for a module to be marked green.</div>
+                            </div>
+                            <div class="setting-control">
+                                <div class="slider-wrapper">
+                                    <input type="range" id="setting-pass-threshold" min="0" max="100" value="80" oninput="document.getElementById('threshold-display').textContent = this.value + '%'" />
+                                    <span class="slider-value" id="threshold-display">80%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-label">Blast Radius Warning Level</div>
+                                <div class="setting-hint">Complexity score above which a node is flagged as "High Risk".</div>
+                            </div>
+                            <div class="setting-control">
+                                <div class="slider-wrapper">
+                                    <input type="range" id="setting-risk-threshold" min="1" max="20" value="5" oninput="document.getElementById('risk-display').textContent = this.value" />
+                                    <span class="slider-value" id="risk-display">5</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="settings-save-btn" id="settings-save-btn">💾 Save Configuration</button>
+                </form>
+            </div>
+
+
+            <!-- Save confirmation toast -->
+            <div id="settings-toast">
+                <span class="toast-icon">✅</span>
+                <div class="toast-text">
+                    <span class="toast-title">Configuration Saved</span>
+                    <span class="toast-sub">Preferences stored in browser localStorage</span>
+                </div>
+            </div>
+
+        </div>
+
     </div>
 
-    <div id="graph-container"></div>
-
-    <!-- Fixed Search Box -->
-    <div id="search-container">
-        <h3>🔍 Search Nodes</h3>
-        <input type="text" id="search-box" placeholder="Type to search..."
-            style="width: calc(100% - 16px); padding: 8px; background: #000; color: #0f0; border: 1px solid #30363d; border-radius: 4px; font-family: monospace; font-size: 0.85rem; box-sizing: border-box;" />
-        <div id="search-results" style="max-height: 150px; overflow-y: auto; margin-top: 8px; font-size: 0.8rem;"></div>
-    </div>
 
     <script>
-        const API_URL = "http://localhost:8000";
-        const WS_URL = "ws://localhost:8000/ws/run"; // WebSocket base URL
+        const API_URL = window.location.protocol + "//" + window.location.host;
+        const WS_URL = (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + "//" + window.location.host + "/ws/run";
         let Graph = null;
         let selectedNode = null;
         let graphData = { nodes: [], links: [] };
+        let currentView = 'graph';
+        let currentGraphMode = 'default';
 
-        // --- Search Logic ---
+        function toggleDetailsPanel() {
+            const panel = document.getElementById('details-panel');
+            panel.classList.toggle('collapsed');
+            
+            const btnFloat = document.getElementById('sidebar-toggle');
+            if (panel.classList.contains('collapsed')) {
+                btnFloat.style.display = 'block';
+            } else {
+                btnFloat.style.display = 'none';
+            }
+            
+            if (Graph) {
+                setTimeout(() => {
+                    Graph.width(document.getElementById('graph-container').clientWidth);
+                }, 310);
+            }
+        }
+
+        function setGraphMode(mode) {
+            currentGraphMode = mode;
+            document.querySelectorAll('#graph-filters .filter-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-mode-' + mode).classList.add('active');
+            
+            if (Graph) {
+                // Force full re-render of nodes by resetting graphData
+                const gd = Graph.graphData();
+                Graph.graphData({ nodes: gd.nodes, links: gd.links });
+            }
+        }
+
+        // ===== SPA ROUTING =====
+
+        function switchView(viewName) {
+            // Update nav items
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            document.getElementById(`nav-${viewName}`).classList.add('active');
+
+            // Update view containers
+            document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
+            const target = document.getElementById(`view-${viewName}`);
+            target.classList.add('active');
+            // Re-trigger animation
+            target.style.animation = 'none';
+            target.offsetHeight; // force reflow
+            target.style.animation = '';
+
+
+            // Resize graph when switching back to it
+            if (viewName === 'graph' && Graph) {
+                setTimeout(() => {
+                    Graph.width(document.getElementById('graph-container').clientWidth);
+                    Graph.height(document.getElementById('graph-container').clientHeight);
+                }, 50);
+            }
+
+            // Load ledger data when switching to it
+            if (viewName === 'ledger') {
+                loadLedgerData();
+            }
+
+            if (viewName === 'security') {
+                loadSecurityData();
+            }
+
+            if (viewName === 'architect') {
+                loadArchitectData();
+            }
+
+            currentView = viewName;
+        }
+
+        // ===== ARCHITECT DATA =====
+
+        function loadArchitectData() {
+            if (!graphData || !graphData.nodes.length) return;
+            filterArchitectNodes();
+        }
+
+        function filterArchitectNodes() {
+            const q = document.getElementById('architect-search').value.toLowerCase();
+            const list = document.getElementById('architect-node-list');
+            list.innerHTML = graphData.nodes
+                .filter(n => n.id.toLowerCase().includes(q))
+                .sort((a,b) => a.id.localeCompare(b.id))
+                .map(n => `<li style="padding:6px; cursor:pointer; border-radius:4px; margin-bottom:2px;" class="architect-node-item" onclick="selectArchitectNode('${n.id}')" onmouseover="this.style.background='#30363d'" onmouseout="this.style.background='transparent'">
+                    <span style="color:${n.status==='FAILED'?'var(--failure-color)':n.status==='PASSED'?'var(--success-color)':'#8b949e'}">●</span> ${n.id}
+                </li>`).join('');
+        }
+
+        function selectArchitectNode(nodeId) {
+            document.getElementById('architect-active-node').textContent = nodeId;
+            const node = graphData.nodes.find(n => n.id === nodeId);
+            document.getElementById('architect-blast-score').textContent = (node && node.metrics && node.metrics.complexity_score) || 0;
+
+            // files I depend on (Top-Down): edges WHERE source === nodeId
+            const dependsOn = graphData.links
+                .filter(l => (typeof l.source === 'object' ? l.source.id : l.source) === nodeId)
+                .map(l => typeof l.target === 'object' ? l.target.id : l.target);
+            
+            document.getElementById('architect-top-down').innerHTML = dependsOn.length 
+                ? dependsOn.map(d => `<div style="padding:4px 0; border-bottom:1px solid #161b22">↘ <a href="#" onclick="selectArchitectNode('${d}')" style="color:var(--accent-color); text-decoration:none">${d}</a></div>`).join('') 
+                : "(No dependencies)";
+
+            // files depending on me (Bottom-Up): edges WHERE target === nodeId
+            const dependedBy = graphData.links
+                .filter(l => (typeof l.target === 'object' ? l.target.id : l.target) === nodeId)
+                .map(l => typeof l.source === 'object' ? l.source.id : l.source);
+            
+            document.getElementById('architect-bottom-up').innerHTML = dependedBy.length 
+                ? dependedBy.map(d => `<div style="padding:4px 0; border-bottom:1px solid #161b22">↖ <a href="#" onclick="selectArchitectNode('${d}')" style="color:var(--accent-color); text-decoration:none">${d}</a></div>`).join('') 
+                : "(No dependents)";
+        }
+
+        // ===== KNOWLEDGE BASE DATA =====
+
+        async function executeKBSearch() {
+            const query = document.getElementById('kb-search-input').value.trim();
+            if(!query) return;
+
+            const container = document.getElementById('kb-results-container');
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon" style="animation: pulse 1s infinite">⚙️</div>
+                    <p>Embedding query and searching Vector DB...</p>
+                </div>
+            `;
+
+            try {
+                const res = await fetch(`${API_URL}/knowledge/search?q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+
+                if(data.error) {
+                    container.innerHTML = `<div style="color:var(--failure-color); padding: 20px;">Error: ${data.error}</div>`;
+                    return;
+                }
+
+                if(!data.length) {
+                    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🤷</div><p>No semantic matches found.</p></div>`;
+                    return;
+                }
+
+                container.innerHTML = data.map(item => `
+                    <div style="background:#161b22; border:1px solid var(--border-color); border-radius:8px; padding:20px; margin-bottom:20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <h3 style="margin:0; color:var(--accent-color); font-size:1.1rem;">${item.func_name}</h3>
+                            <div style="background:rgba(126,231,135,0.1); color:#7ee787; padding:4px 8px; border-radius:12px; font-size:0.8rem; font-weight:bold;">${item.score}% Match</div>
+                        </div>
+                        <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:12px;">📄 ${item.file}</div>
+                        <pre style="background:#0d1117; padding:12px; border-radius:6px; overflow-x:auto; font-family:monospace; font-size:0.85rem; color:#c9d1d9; border:1px solid #30363d; margin:0;"><code>${item.code}</code></pre>
+                    </div>
+                `).join('');
+
+            } catch(e) {
+                container.innerHTML = `<div style="color:var(--failure-color); padding: 20px;">Network Error: ${e.message}</div>`;
+            }
+        }
+
+        // ===== LEDGER DATA =====
+
+        let historyChartInstance = null;
+
+        async function loadLedgerData() {
+            try {
+                const res = await fetch(`${API_URL}/tests/history`);
+                const history = await res.json();
+                const tbody = document.getElementById('ledger-tbody');
+
+                const total = history.length;
+                const passed = history.filter(e => e.status === 'PASSED').length;
+                const failed = history.filter(e => e.status === 'FAILED').length;
+                const rate = total > 0 ? Math.round((passed / total) * 100) : 0;
+
+                document.getElementById('ledger-total').textContent = total;
+                document.getElementById('ledger-passed').textContent = passed;
+                document.getElementById('ledger-failed').textContent = failed;
+                document.getElementById('ledger-rate').textContent = `${rate}%`;
+
+                if (history.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📋</div><p>No test history yet. Run some tests to populate this ledger.</p></div></td></tr>`;
+                    return;
+                }
+
+                // ── Flakiness detection ──
+                // Track status transitions per file: if a file toggles PASS↔FAIL > 2 times, it's flaky
+                const fileStatusHistory = {};  // filePath -> [status, status, ...]
+                history.forEach(entry => {
+                    const key = entry.file_path;
+                    if (!fileStatusHistory[key]) fileStatusHistory[key] = [];
+                    fileStatusHistory[key].push(entry.status);
+                });
+
+                const flakyFiles = new Set();
+                for (const [filePath, statuses] of Object.entries(fileStatusHistory)) {
+                    let toggles = 0;
+                    for (let i = 1; i < statuses.length; i++) {
+                        if (statuses[i] !== statuses[i - 1] &&
+                            (statuses[i] === 'PASSED' || statuses[i] === 'FAILED') &&
+                            (statuses[i - 1] === 'PASSED' || statuses[i - 1] === 'FAILED')) {
+                            toggles++;
+                        }
+                    }
+                    if (toggles > 2) flakyFiles.add(filePath);
+                }
+
+                // ── Render table with flaky badges ──
+                tbody.innerHTML = history.slice(0, 50).map(entry => {
+                    const time = new Date(entry.timestamp * 1000).toLocaleString();
+                    const file = entry.file_path.split('\\').pop().split('/').pop();
+                    const module = file.replace(/\.[^.]+$/, '');
+                    const statusClass = entry.status === 'PASSED' ? 'passed' : entry.status === 'FAILED' ? 'failed' : 'unknown';
+                    const statusIcon = entry.status === 'PASSED' ? '✓' : entry.status === 'FAILED' ? '✗' : '?';
+                    const duration = entry.duration ? `${entry.duration.toFixed(1)}s` : '--';
+                    const flakyTag = flakyFiles.has(entry.file_path) ? '<span class="flaky-badge">⚠️ FLAKY</span>' : '';
+
+                    return `<tr>
+                        <td style="color: var(--text-muted); font-size: 0.8rem;">${time}</td>
+                        <td style="font-family: monospace; font-size: 0.82rem;">${file}</td>
+                        <td>${module}</td>
+                        <td><span class="status-badge ${statusClass}">${statusIcon} ${entry.status}</span>${flakyTag}</td>
+                        <td style="color: var(--text-muted);">${duration}</td>
+                    </tr>`;
+                }).join('');
+
+                // ── Time-Series Chart ──
+                renderHistoryChart(history);
+
+            } catch (e) {
+                console.error("Ledger fetch error:", e);
+            }
+        }
+
+        async function loadSecurityData() {
+            try {
+                // The graph API returns all nodes including their vulnerabilities
+                const res = await fetch(`${API_URL}/graph`);
+                const graph_res = await res.json();
+                
+                let high = 0, med = 0, low = 0;
+                let rows = [];
+
+                graph_res.nodes.forEach(node => {
+                    const vulns = node.metrics?.vulnerabilities || [];
+                    vulns.forEach(v => {
+                        const sev = v.issue_severity || 'LOW';
+                        if (sev === 'HIGH') high++;
+                        else if (sev === 'MEDIUM') med++;
+                        else low++;
+                        
+                        const fileBase = (node.path || node.id).split(/[/\\]/).pop();
+
+                        rows.push(`
+                            <tr>
+                                <td><span class="status-badge ${sev === 'HIGH' ? 'failed' : sev === 'MEDIUM' ? 'unknown' : 'passed'}">${sev}</span></td>
+                                <td style="font-family: monospace; font-size: 0.82rem;">${fileBase}</td>
+                                <td>${v.line_number || '--'}</td>
+                                <td style="font-size: 0.82rem;">${v.issue_text}</td>
+                            </tr>
+                        `);
+                    });
+                });
+
+                document.getElementById('sec-high').textContent = high;
+                document.getElementById('sec-med').textContent = med;
+                document.getElementById('sec-low').textContent = low;
+
+                const tbody = document.getElementById('security-tbody');
+                if (rows.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state"><div class="empty-icon">✅</div><p>No vulnerabilities detected. Architecture is secure.</p></div></td></tr>`;
+                } else {
+                    tbody.innerHTML = rows.join('');
+                }
+            } catch(e) {
+                console.error("Security load error:", e);
+                document.getElementById('security-tbody').innerHTML = `<tr><td colspan="4"><div style="color:var(--failure-color)">Failed to load data</div></td></tr>`;
+            }
+        }
+
+        function renderHistoryChart(history) {
+            // Group runs chronologically into time-buckets (per-run index for simplicity)
+            // Compute cumulative pass rate at each point
+            const labels = [];
+            const passRates = [];
+            const passData = [];
+            const failData = [];
+            let cumPassed = 0;
+            let cumFailed = 0;
+
+            // Sort oldest-first
+            const sorted = [...history].sort((a, b) => a.timestamp - b.timestamp);
+
+            sorted.forEach((entry, i) => {
+                if (entry.status === 'PASSED') cumPassed++;
+                else if (entry.status === 'FAILED') cumFailed++;
+                const total = cumPassed + cumFailed;
+                const rate = total > 0 ? Math.round((cumPassed / total) * 100) : 0;
+
+                const d = new Date(entry.timestamp * 1000);
+                labels.push(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+                passRates.push(rate);
+                passData.push(cumPassed);
+                failData.push(cumFailed);
+            });
+
+            const ctx = document.getElementById('historyChart').getContext('2d');
+
+            // Destroy previous chart instance to prevent canvas reuse errors
+            if (historyChartInstance) {
+                historyChartInstance.destroy();
+                historyChartInstance = null;
+            }
+
+            historyChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Pass Rate %',
+                            data: passRates,
+                            borderColor: '#7ee787',
+                            backgroundColor: 'rgba(126, 231, 135, 0.08)',
+                            borderWidth: 2,
+                            tension: 0.35,
+                            fill: true,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#7ee787',
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Cumulative Passes',
+                            data: passData,
+                            borderColor: 'rgba(88, 166, 255, 0.6)',
+                            borderWidth: 1.5,
+                            borderDash: [4, 3],
+                            tension: 0.35,
+                            fill: false,
+                            pointRadius: 0,
+                            yAxisID: 'y1'
+                        },
+                        {
+                            label: 'Cumulative Failures',
+                            data: failData,
+                            borderColor: 'rgba(248, 81, 73, 0.6)',
+                            borderWidth: 1.5,
+                            borderDash: [4, 3],
+                            tension: 0.35,
+                            fill: false,
+                            pointRadius: 0,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#8b949e', font: { family: 'Inter', size: 11 }, usePointStyle: true, pointStyle: 'circle' }
+                        },
+                        tooltip: {
+                            backgroundColor: '#161b22',
+                            borderColor: '#30363d',
+                            borderWidth: 1,
+                            titleColor: '#c9d1d9',
+                            bodyColor: '#8b949e',
+                            titleFont: { family: 'Inter', weight: '600' },
+                            bodyFont: { family: 'Inter' },
+                            padding: 10,
+                            cornerRadius: 8
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#8b949e', font: { family: 'Inter', size: 10 }, maxRotation: 45, maxTicksLimit: 12 },
+                            grid: { color: 'rgba(48,54,61,0.4)' }
+                        },
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            min: 0, max: 100,
+                            ticks: { color: '#7ee787', font: { family: 'Inter', size: 11 }, callback: v => v + '%' },
+                            grid: { color: 'rgba(48,54,61,0.3)' },
+                            title: { display: true, text: 'Pass Rate', color: '#7ee787', font: { family: 'Inter', size: 11 } }
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            min: 0,
+                            ticks: { color: '#8b949e', font: { family: 'Inter', size: 11 } },
+                            grid: { drawOnChartArea: false },
+                            title: { display: true, text: 'Cumulative Count', color: '#8b949e', font: { family: 'Inter', size: 11 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ===== AI SYNOPSIS =====
+
+        async function fetchAISummary() {
+            if (!selectedNode) return;
+
+            const btn = document.getElementById('ai-brief-btn');
+            const card = document.getElementById('ai-synopsis-card');
+            const textEl = document.getElementById('ai-synopsis-text');
+
+            btn.textContent = '⏳ Analyzing...';
+            btn.classList.add('loading');
+            card.style.display = 'none';
+
+            try {
+                const res = await fetch(`${API_URL}/summary/${selectedNode.id}`);
+                const data = await res.json();
+                textEl.textContent = data.summary || 'No summary returned.';
+                card.style.display = 'block';
+            } catch (err) {
+                textEl.textContent = 'Summary unavailable — could not reach the server.';
+                card.style.display = 'block';
+            } finally {
+                btn.textContent = '✨ Brief Me (AI Synopsis)';
+                btn.classList.remove('loading');
+            }
+        }
+
+        // ===== SETTINGS (localStorage persistence) =====
+
+        const SETTINGS_KEYS = {
+            groqKey: 'cognicode_groq_api_key',
+            apiUrl: 'cognicode_api_base_url',
+            passThreshold: 'cognicode_pass_threshold',
+            riskThreshold: 'cognicode_risk_threshold'
+        };
+
+        function saveSettings() {
+            const groqKey = document.getElementById('setting-groq-key').value;
+            const apiUrl = document.getElementById('setting-api-url').value;
+            const passThreshold = document.getElementById('setting-pass-threshold').value;
+            const riskThreshold = document.getElementById('setting-risk-threshold').value;
+
+            // Persist to localStorage
+            localStorage.setItem(SETTINGS_KEYS.groqKey, groqKey);
+            localStorage.setItem(SETTINGS_KEYS.apiUrl, apiUrl);
+            localStorage.setItem(SETTINGS_KEYS.passThreshold, passThreshold);
+            localStorage.setItem(SETTINGS_KEYS.riskThreshold, riskThreshold);
+
+            // Button flash feedback
+            const btn = document.getElementById('settings-save-btn');
+            btn.textContent = '✅ Saved!';
+            btn.classList.add('saved');
+
+            // Toast notification
+            const toast = document.getElementById('settings-toast');
+            toast.classList.add('show');
+
+            setTimeout(() => {
+                btn.textContent = '💾 Save Configuration';
+                btn.classList.remove('saved');
+            }, 2200);
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        function loadSettings() {
+            const groqKey = localStorage.getItem(SETTINGS_KEYS.groqKey);
+            const apiUrl = localStorage.getItem(SETTINGS_KEYS.apiUrl);
+            const passThreshold = localStorage.getItem(SETTINGS_KEYS.passThreshold);
+            const riskThreshold = localStorage.getItem(SETTINGS_KEYS.riskThreshold);
+
+            if (groqKey !== null) {
+                document.getElementById('setting-groq-key').value = groqKey;
+            }
+            if (apiUrl !== null) {
+                document.getElementById('setting-api-url').value = apiUrl;
+            }
+            if (passThreshold !== null) {
+                document.getElementById('setting-pass-threshold').value = passThreshold;
+                document.getElementById('threshold-display').textContent = passThreshold + '%';
+            }
+            if (riskThreshold !== null) {
+                document.getElementById('setting-risk-threshold').value = riskThreshold;
+                document.getElementById('risk-display').textContent = riskThreshold;
+            }
+        }
+
+        // ===== SEARCH LOGIC =====
+
         function searchNodes() {
             const query = document.getElementById('search-box').value.toLowerCase();
             const results = graphData.nodes.filter(n => n.id.toLowerCase().includes(query));
@@ -262,11 +1950,13 @@
         }
 
         function focusNode(nodeId) {
-            const node = graphData.nodes.find(n => n.id === nodeId);
+            // Use ForceGraph's internal node references (they have the actual x,y coords)
+            const internalNodes = Graph ? Graph.graphData().nodes : [];
+            const node = internalNodes.find(n => n.id === nodeId);
             if (node && Graph) {
+                selectNode(node);
                 Graph.centerAt(node.x, node.y, 1000);
                 Graph.zoom(3, 1000);
-                selectNode(node);
             }
         }
 
@@ -278,6 +1968,71 @@
             document.getElementById('selected-path').innerText = node.path || '';
             document.getElementById('run-test-btn').style.display = 'block';
 
+            // Show AI Brief Me button & reset synopsis
+            document.getElementById('ai-brief-btn').style.display = 'block';
+            document.getElementById('ai-synopsis-card').style.display = 'none';
+
+            // --- Architecture Violation Banner ---
+            const violBanner = document.getElementById('violation-banner');
+            const violText = document.getElementById('violation-text');
+            if (node.status === 'VIOLATION' && node.metrics?.violation_reason) {
+                violText.textContent = 'Architecture Violation: ' + node.metrics.violation_reason;
+                violBanner.style.display = 'block';
+            } else {
+                violBanner.style.display = 'none';
+            }
+
+            // --- Blast Radius / Complexity Score ---
+            const score = node.metrics?.complexity_score ?? null;
+            const brContainer = document.getElementById('blast-radius');
+            const brValue = document.getElementById('blast-radius-value');
+
+            brContainer.classList.remove('risk-none', 'risk-safe', 'risk-moderate', 'risk-high');
+
+            if (score === null || score === undefined) {
+                brContainer.classList.add('risk-none');
+                brValue.textContent = '-- files affected';
+                document.querySelector('#blast-radius .br-icon').textContent = '🎯';
+            } else if (score === 0) {
+                brContainer.classList.add('risk-safe');
+                brValue.textContent = '0 files affected — Safe to edit';
+                document.querySelector('#blast-radius .br-icon').textContent = '✅';
+            } else if (score >= 1 && score <= 5) {
+                brContainer.classList.add('risk-moderate');
+                brValue.textContent = `${score} files affected — Moderate risk`;
+                document.querySelector('#blast-radius .br-icon').textContent = '⚠️';
+            } else {
+                brContainer.classList.add('risk-high');
+                brValue.textContent = `${score} files affected — High risk!`;
+                document.querySelector('#blast-radius .br-icon').textContent = '🔴';
+            }
+
+            // --- Coverage Indicator ---
+            const coverage = node.metrics?.coverage_percent ?? null;
+            const covContainer = document.getElementById('coverage-indicator');
+            const covPercent = document.getElementById('cov-percent-value');
+            const covBarFill = document.getElementById('cov-bar-fill');
+
+            covContainer.classList.remove('cov-none', 'cov-high', 'cov-medium', 'cov-low');
+
+            if (coverage === null || coverage === undefined) {
+                covContainer.classList.add('cov-none');
+                covPercent.textContent = '--%';
+                covBarFill.style.width = '0%';
+            } else {
+                const rounded = Math.round(coverage);
+                covPercent.textContent = `${rounded}%`;
+                covBarFill.style.width = `${rounded}%`;
+                if (coverage >= 80) {
+                    covContainer.classList.add('cov-high');
+                } else if (coverage >= 50) {
+                    covContainer.classList.add('cov-medium');
+                } else {
+                    covContainer.classList.add('cov-low');
+                }
+            }
+
+            // --- Test Status ---
             const statusElem = document.getElementById('test-status-indicator');
             if (node.status === "PASSED") {
                 statusElem.innerText = "Status: PASSED";
@@ -324,12 +2079,9 @@
                 graphData = data;
                 document.getElementById('node-count').innerText = data.nodes.length;
 
-                // CRITICAL: Only render if graph doesn't exist OR manual refresh
-                // Otherwise just update node colors WITHOUT retriggering physics
                 if (!Graph || isManual) {
                     renderGraph(data);
                 } else {
-                    // Update colors only, preserve positions
                     updateNodeColors(data);
                 }
                 updateActivityLog();
@@ -339,70 +2091,267 @@
         }
 
         function updateNodeColors(data) {
-            // Update only the status/color without re-rendering
             data.nodes.forEach(newNode => {
                 const existingNode = graphData.nodes.find(n => n.id === newNode.id);
                 if (existingNode) {
                     existingNode.status = newNode.status;
                 }
             });
-            Graph.nodeColor(Graph.nodeColor()); // Trigger re-render of colors
+            Graph.nodeColor(Graph.nodeColor());
         }
 
         function renderGraph(data) {
             const elem = document.getElementById('graph-container');
 
-            // Init Graph (should only happen once)
             Graph = ForceGraph()(elem)
                 .graphData(data)
                 .backgroundColor('#0d1117')
                 .nodeId('id')
                 .nodeLabel('id')
-                // FIXED node size - must be constant
-                .nodeRelSize(4)  // Use nodeRelSize instead of nodeVal for consistent sizing
-                .nodeVal(1)       // Set base value to 1
-                // Color coding logic
-                .nodeColor(node => {
-                    if (node.status === 'PASSED') return '#238636'; // Green
-                    if (node.status === 'FAILED') return '#da3633'; // Red
-                    return '#58a6ff'; // Blue (Unknown)
-                })
+                .nodeRelSize(4)
+                .nodeVal(1)
+                .nodeColor(node => '#58a6ff')
                 .linkColor(() => '#30363d')
-                // Thicker links
                 .linkWidth(2)
                 .linkDirectionalParticles(2)
                 .linkDirectionalParticleWidth(2)
-                .onNodeClick(node => {
-                    selectedNode = node;
-                    document.getElementById('selected-name').innerText = node.id;
-                    document.getElementById('selected-name').style.fontStyle = 'normal';
-                    document.getElementById('selected-name').style.color = '#c9d1d9';
-                    document.getElementById('selected-path').innerText = node.path || '';
-                    document.getElementById('run-test-btn').style.display = 'block';
+                .nodeCanvasObject((node, ctx, globalScale) => {
+                    const size = 4;
+                    // Compute base color from status (always)
+                    let baseColor = '#58a6ff';
+                    if (node.status === 'VIOLATION') baseColor = '#FFA500';
+                    else if (node.status === 'PASSED') baseColor = '#238636';
+                    else if (node.status === 'FAILED') baseColor = '#da3633';
 
-                    const statusElem = document.getElementById('test-status-indicator');
-                    if (node.status === "PASSED") {
-                        statusElem.innerText = "Status: PASSED";
-                        statusElem.style.backgroundColor = "var(--success-color)";
-                        statusElem.style.display = 'block';
-                    } else if (node.status === "FAILED") {
-                        statusElem.innerText = "Status: FAILED";
-                        statusElem.style.backgroundColor = "var(--failure-color)";
-                        statusElem.style.display = 'block';
-                    } else {
-                        statusElem.style.display = 'none';
+                    const coverage = node.metrics?.coverage_percent ?? null;
+                    const score = node.metrics?.complexity_score ?? 0;
+
+                    if (currentGraphMode === 'default') {
+                        // Show everything: status colors + coverage opacity + blast rings
+                        if (coverage !== null && coverage < 50) {
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                            ctx.fillStyle = baseColor;
+                            ctx.globalAlpha = 0.15;
+                            ctx.fill();
+                            ctx.globalAlpha = 1.0;
+                            ctx.beginPath();
+                            ctx.setLineDash([3 / globalScale, 3 / globalScale]);
+                            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                            ctx.strokeStyle = baseColor;
+                            ctx.lineWidth = 1.5 / globalScale;
+                            ctx.globalAlpha = 0.7;
+                            ctx.stroke();
+                            ctx.globalAlpha = 1.0;
+                            ctx.setLineDash([]);
+                        } else if (coverage !== null && coverage < 80) {
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                            ctx.fillStyle = baseColor;
+                            ctx.globalAlpha = 0.5;
+                            ctx.fill();
+                            ctx.globalAlpha = 1.0;
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                            ctx.strokeStyle = baseColor;
+                            ctx.lineWidth = 0.8 / globalScale;
+                            ctx.globalAlpha = 0.4;
+                            ctx.stroke();
+                            ctx.globalAlpha = 1.0;
+                        } else {
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                            ctx.fillStyle = baseColor;
+                            ctx.fill();
+                        }
+                        if (score > 5) {
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size + 3, 0, 2 * Math.PI);
+                            ctx.strokeStyle = 'rgba(248, 81, 73, 0.5)';
+                            ctx.lineWidth = 1.5 / globalScale;
+                            ctx.stroke();
+                        } else if (score >= 1) {
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size + 2, 0, 2 * Math.PI);
+                            ctx.strokeStyle = 'rgba(227, 179, 65, 0.35)';
+                            ctx.lineWidth = 1 / globalScale;
+                            ctx.stroke();
+                        }
+                    } else if (currentGraphMode === 'status') {
+                        // Only show test status colors, grey for untested
+                        let statusColor = '#484f58';
+                        if (node.status === 'PASSED') statusColor = '#238636';
+                        else if (node.status === 'FAILED') statusColor = '#da3633';
+                        ctx.beginPath();
+                        ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                        ctx.fillStyle = statusColor;
+                        ctx.fill();
+                    } else if (currentGraphMode === 'coverage') {
+                        // Only show coverage visual differences
+                        const color = '#58a6ff';
+                        if (coverage !== null && coverage < 50) {
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                            ctx.fillStyle = color;
+                            ctx.globalAlpha = 0.15;
+                            ctx.fill();
+                            ctx.globalAlpha = 1.0;
+                            ctx.beginPath();
+                            ctx.setLineDash([3 / globalScale, 3 / globalScale]);
+                            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                            ctx.strokeStyle = color;
+                            ctx.lineWidth = 1.5 / globalScale;
+                            ctx.globalAlpha = 0.7;
+                            ctx.stroke();
+                            ctx.globalAlpha = 1.0;
+                            ctx.setLineDash([]);
+                        } else if (coverage !== null && coverage < 80) {
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                            ctx.fillStyle = color;
+                            ctx.globalAlpha = 0.5;
+                            ctx.fill();
+                            ctx.globalAlpha = 1.0;
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                            ctx.strokeStyle = color;
+                            ctx.lineWidth = 0.8 / globalScale;
+                            ctx.globalAlpha = 0.4;
+                            ctx.stroke();
+                            ctx.globalAlpha = 1.0;
+                        } else {
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                            ctx.fillStyle = color;
+                            ctx.fill();
+                        }
+                    } else if (currentGraphMode === 'blast') {
+                        // Only show blast radius rings
+                        ctx.beginPath();
+                        ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                        ctx.fillStyle = '#58a6ff';
+                        ctx.fill();
+                        if (score > 5) {
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size + 4, 0, 2 * Math.PI);
+                            ctx.strokeStyle = 'rgba(248, 81, 73, 0.7)';
+                            ctx.lineWidth = 2 / globalScale;
+                            ctx.stroke();
+                        } else if (score >= 1) {
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size + 3, 0, 2 * Math.PI);
+                            ctx.strokeStyle = 'rgba(227, 179, 65, 0.5)';
+                            ctx.lineWidth = 1.5 / globalScale;
+                            ctx.stroke();
+                        }
+                    } else if (currentGraphMode === 'violations') {
+                        // Only show violation nodes orange, rest grey
+                        let vColor = '#484f58';
+                        if (node.status === 'VIOLATION') vColor = '#FFA500';
+                        ctx.beginPath();
+                        ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                        ctx.fillStyle = vColor;
+                        ctx.fill();
+                        if (node.status === 'VIOLATION') {
+                            ctx.beginPath();
+                            ctx.arc(node.x, node.y, size + 2, 0, 2 * Math.PI);
+                            ctx.strokeStyle = '#FFA500';
+                            ctx.lineWidth = 1.5 / globalScale;
+                            ctx.stroke();
+                        }
                     }
+                })
+                .nodePointerAreaPaint((node, color, ctx) => {
+                    const size = 6;
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                })
+                .nodeLabel(node => {
+                    const score = node.metrics?.complexity_score ?? 0;
+                    const coverage = node.metrics?.coverage_percent ?? null;
+                    const statusColor = node.status === 'VIOLATION' ? '#FFA500'
+                        : node.status === 'PASSED' ? '#7ee787'
+                        : node.status === 'FAILED' ? '#f85149' : '#8b949e';
+                    const statusText = node.status || 'UNKNOWN';
 
-                    // Zoom to node
+                    // Violation row for tooltip
+                    const violationReason = node.metrics?.violation_reason || null;
+                    const violationRow = violationReason
+                        ? `<div style="border-top:1px solid rgba(255,165,0,0.3);margin:6px 0;"></div>
+                           <div style="color:#FFA500;font-size:11px;font-weight:600;">⚠️ ${violationReason}</div>`
+                        : '';
+
+                    let riskColor = '#8b949e';
+                    let riskLabel = 'None';
+                    if (score === 0) { riskColor = '#7ee787'; riskLabel = 'Safe'; }
+                    else if (score <= 5) { riskColor = '#e3b341'; riskLabel = 'Moderate'; }
+                    else { riskColor = '#f85149'; riskLabel = 'High Risk'; }
+
+                    // Coverage display
+                    const covVal = coverage !== null ? Math.round(coverage) : null;
+                    let covColor = '#8b949e';
+                    let covBarColor = '#30363d';
+                    if (covVal !== null) {
+                        if (covVal >= 80) { covColor = '#7ee787'; covBarColor = '#238636'; }
+                        else if (covVal >= 50) { covColor = '#e3b341'; covBarColor = '#9e6a03'; }
+                        else { covColor = '#f85149'; covBarColor = '#da3633'; }
+                    }
+                    const covText = covVal !== null ? `${covVal}%` : 'N/A';
+                    const covWidth = covVal !== null ? covVal : 0;
+
+                    return `<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px 14px;font-family:'Inter',-apple-system,sans-serif;font-size:12px;color:#c9d1d9;min-width:200px;box-shadow:0 8px 24px rgba(0,0,0,0.6);">
+                        <div style="font-weight:600;font-size:13px;margin-bottom:6px;color:#58a6ff;">${node.id}</div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                            <span style="color:#8b949e;">Status</span>
+                            <span style="color:${statusColor};font-weight:600;">${statusText}</span>
+                        </div>
+                        <div style="border-top:1px solid #30363d;margin:6px 0;"></div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                            <span style="color:#8b949e;">Coverage</span>
+                            <span style="color:${covColor};font-weight:700;">${covText}</span>
+                        </div>
+                        <div style="width:100%;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-bottom:8px;">
+                            <div style="width:${covWidth}%;height:100%;background:${covBarColor};border-radius:2px;transition:width 0.3s;"></div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="color:#8b949e;">Blast Radius</span>
+                            <span style="color:${riskColor};font-weight:700;">${score} dep. files <span style="font-size:10px;opacity:0.8;">(${riskLabel})</span></span>
+                        </div>
+                        ${violationRow}
+                    </div>`;
+                })
+                .onNodeClick(node => {
+                    selectNode(node);
                     Graph.centerAt(node.x, node.y, 1000);
                     Graph.zoom(2, 1000);
                 })
                 .onBackgroundClick(() => {
                     selectedNode = null;
                     updateSidebar(null);
+
+                    const brContainer = document.getElementById('blast-radius');
+                    brContainer.classList.remove('risk-safe', 'risk-moderate', 'risk-high');
+                    brContainer.classList.add('risk-none');
+                    document.getElementById('blast-radius-value').textContent = '-- files affected';
+                    document.querySelector('#blast-radius .br-icon').textContent = '🎯';
+
+                    // Reset coverage
+                    const covContainer = document.getElementById('coverage-indicator');
+                    covContainer.classList.remove('cov-high', 'cov-medium', 'cov-low');
+                    covContainer.classList.add('cov-none');
+                    document.getElementById('cov-percent-value').textContent = '--%';
+                    document.getElementById('cov-bar-fill').style.width = '0%';
+
+                    // Reset AI synopsis
+                    document.getElementById('ai-brief-btn').style.display = 'none';
+
+                    // Reset violation banner
+                    document.getElementById('violation-banner').style.display = 'none';
+                    document.getElementById('ai-synopsis-card').style.display = 'none';
                 });
 
-            // CRITICAL: Completely disable physics simulation after 3 seconds to freeze graph
             setTimeout(() => {
                 if (Graph) {
                     Graph.d3Force('charge', null);
@@ -426,14 +2375,12 @@
                 nameEl.style.color = '#c9d1d9';
                 nameEl.style.fontStyle = 'normal';
 
-                // Clean up path display
                 let cleanPath = node.path || node.id;
                 if (cleanPath.includes('test_repo')) cleanPath = '...' + cleanPath.split('test_repo')[1];
                 pathEl.innerText = cleanPath;
 
                 btn.style.display = 'block';
 
-                // Show status
                 statusEl.style.display = 'block';
                 if (node.status === 'PASSED') {
                     statusEl.innerText = "TESTS PASSED";
@@ -448,7 +2395,7 @@
 
             } else {
                 nameEl.innerText = "Click a node to manage";
-                nameEl.style.color = '#8b949e';
+                nameEl.style.color = 'var(--text-muted)';
                 nameEl.style.fontStyle = 'italic';
                 pathEl.innerText = "";
                 btn.style.display = 'none';
@@ -490,7 +2437,7 @@
 
             btn.disabled = true;
             btn.innerText = "⏳ Connecting...";
-            term.innerHTML = ""; // Clear terminal
+            term.innerHTML = "";
 
             const ws = new WebSocket(`${WS_URL}/${selectedNode.id}`);
 
@@ -500,13 +2447,12 @@
             };
 
             ws.onmessage = (event) => {
-                // Determine color based on content
                 let color = "inherit";
                 if (event.data.includes("PASSED")) color = "#238636";
                 if (event.data.includes("FAILED") || event.data.includes("Error") || event.data.includes("ERR:")) color = "#da3633";
 
                 term.innerHTML += `<span style='color: ${color}'>${event.data}</span>`;
-                term.scrollTop = term.scrollHeight; // Auto scroll
+                term.scrollTop = term.scrollHeight;
             };
 
             ws.onclose = () => {
@@ -514,7 +2460,6 @@
                 btn.innerText = "▶ Run Tests";
                 term.innerHTML += "\n<span style='color: #8b949e'>[Connection Closed]</span>";
 
-                // Refresh graph to show new status
                 setTimeout(() => fetchGraph(true), 1000);
             };
 
@@ -525,6 +2470,45 @@
             };
         }
 
+        async function runCloneScan() {
+            const btn = document.getElementById('clone-scan-btn');
+            const resultsDiv = document.getElementById('clone-results-list');
+            
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Scanning Workspace...';
+            resultsDiv.innerHTML = '<li style="color:var(--text-muted);">Parsing abstract syntax trees and embedded vectors...</li>';
+            
+            try {
+                const baseUrl = document.getElementById('setting-api-url').value || 'http://localhost:8000';
+                const response = await fetch(`${baseUrl}/clones`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    resultsDiv.innerHTML = `<li style="color:var(--failure-color);">Error: ${data.error}</li>`;
+                } else if (data.clones && data.clones.length > 0 && data.clones[0].error) {
+                    resultsDiv.innerHTML = `<li style="color:var(--failure-color);">Error: ${data.clones[0].error}</li>`;
+                } else if (data.clones && data.clones.length > 0) {
+                    resultsDiv.innerHTML = data.clones.map(c => `
+                        <li style="margin-bottom:8px;background:rgba(255,255,255,0.02);padding:8px;border-radius:4px;border-left:3px solid #e3b341;">
+                            <div style="color:#c9d1d9;">Similarity: <strong>${c.score}%</strong></div>
+                            <div style="color:#58a6ff;font-size:0.85em;margin-top:4px;">
+                                <span>${c.func1?.file} : <code>${c.func1?.name}()</code></span>
+                                <br><span style="color:#8b949e">matches</span><br>
+                                <span>${c.func2?.file} : <code>${c.func2?.name}()</code></span>
+                            </div>
+                        </li>
+                    `).join('');
+                } else {
+                    resultsDiv.innerHTML = '<li style="color:var(--success-color);">✅ Engine clear! No semantic clones found.</li>';
+                }
+            } catch (err) {
+                resultsDiv.innerHTML = `<li style="color:var(--failure-color);">Fetch failed: ${err.message}</li>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🔬 Run Global Scan';
+            }
+        }
+
         function forceRefresh() {
             fetchGraph(true);
         }
@@ -532,12 +2516,24 @@
         // --- Init ---
 
         window.addEventListener('resize', () => {
-            if (Graph) Graph.width(document.getElementById('graph-container').clientWidth);
+            if (Graph && currentView === 'graph') {
+                Graph.width(document.getElementById('graph-container').clientWidth);
+                Graph.height(document.getElementById('graph-container').clientHeight);
+            }
         });
 
-        fetchGraph();
+        // Keyboard shortcuts for nav
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            if (e.key === '1') switchView('graph');
+            if (e.key === '2') switchView('ledger');
+            if (e.key === '3') switchView('settings');
+        });
 
-        // Poll every 2 seconds
+        // Hydrate settings from localStorage on boot
+        loadSettings();
+
+        fetchGraph();
         setInterval(() => fetchGraph(), 2000);
 
     </script>
