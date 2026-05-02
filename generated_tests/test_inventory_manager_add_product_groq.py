@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: add_product
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-04-03 10:25:24
+Generated on: 2026-05-01 00:11:33
 Source file: inventory_manager.py
 Function signature: def add_product(self, product: Product)
 """
@@ -18,95 +18,122 @@ sys.path.insert(0, r"C:\Users\gurav\prog\college\BE Proj\cognicode")
 # Import the function to be tested
 from test_repo.inventory_manager import InventoryManager
 
+import pytest
+from unittest.mock import Mock, MagicMock, call
+
+# The class under test lives in ``test_repo.inventory_manager`` (the file name is
+# ``inventory_manager.py``).  Import it using the full import path so that
+# ``monkeypatch.setattr`` can later target the logger correctly.
+from test_repo.inventory_manager import InventoryManager, InventoryError  # type: ignore
+
+
+@pytest.fixture(autouse=True)
+def mock_logger(monkeypatch):
+    """
+    Replace the modulelevel ``logger`` with a ``MagicMock`` for the duration of
+    each test so that we can assert that ``logger.info`` is called with the
+    expected message.
+    """
+    fake_logger = MagicMock()
+    monkeypatch.setattr("test_repo.inventory_manager.logger", fake_logger)
+    return fake_logger
+
+
 @pytest.mark.parametrize(
     "sku, name, stock",
     [
-        ("ABC123", "Widget", 10),
-        ("xyz-789", "Gadget", 0),
-        ("SKU_001", "Thingamajig", 5),
+        ("SKU001", "Widget A", 10),
+        ("SKU002", "Gadget B", 0),
+        ("SKU-XYZ-123", "Thingamajig", 9999),
     ],
 )
-def test_add_product_normal_cases(sku, name, stock):
-    """Adding a new product with a unique SKU should store it in the inventory."""
-    # Arrange
+def test_add_product_normal_cases(sku, name, stock, mock_logger):
+    """
+    Normal usage: adding a brandnew product should store it in the manager and
+    emit a log entry.
+    """
     manager = InventoryManager()
+
+    # Build a lightweight ``Product`` mock that mimics the real interface.
     product = Mock()
     product.sku = sku
     product.name = name
     product.stock = stock
+    # ``add_stock`` is used by ``restock`` only, but we provide it for completeness.
+    product.add_stock = Mock()
 
     # Act
     manager.add_product(product)
 
-    # Assert
-    assert sku in manager.products, "SKU should be present after adding"
-    stored = manager.products[sku]
-    assert stored is product, "The stored product should be the same instance that was added"
-    assert stored.name == name
-    assert stored.stock == stock
+    # Assert the product is now in the internal dictionary.
+    assert sku in manager.products
+    assert manager.products[sku] is product
+
+    # Verify that a log message was emitted with the correct product name.
+    mock_logger.info.assert_called_once_with(f"Added product {name}")
 
 
-def test_add_product_edge_cases():
-    """Edgecase SKUs (empty string, very long, special characters) should still be accepted."""
+def test_add_product_edge_cases(mock_logger):
+    """
+    Edge cases such as an empty SKU or a very long SKU should still be accepted
+    because the method only checks for existence, not format.
+    """
     manager = InventoryManager()
 
-    # Empty SKU
+    # Edge case 1: empty string SKU
     empty_sku_product = Mock()
     empty_sku_product.sku = ""
     empty_sku_product.name = "EmptySKU"
-    empty_sku_product.stock = 1
+    empty_sku_product.stock = 5
+    empty_sku_product.add_stock = Mock()
+
     manager.add_product(empty_sku_product)
     assert "" in manager.products
-    assert manager.products[""].name == "EmptySKU"
+    assert manager.products[""] is empty_sku_product
+    mock_logger.info.assert_called_with("Added product EmptySKU")
+    mock_logger.info.reset_mock()
 
-    # Very long SKU
-    long_sku = "L" * 255
+    # Edge case 2: extremely long SKU
+    long_sku = "X" * 500  # 500 characters long
     long_sku_product = Mock()
     long_sku_product.sku = long_sku
-    long_sku_product.name = "LongSKU"
-    long_sku_product.stock = 2
+    long_sku_product.name = "LongSKUProduct"
+    long_sku_product.stock = 1
+    long_sku_product.add_stock = Mock()
+
     manager.add_product(long_sku_product)
     assert long_sku in manager.products
-    assert manager.products[long_sku].stock == 2
-
-    # SKU with special characters
-    special_sku = "SKU!@#$%^&*()_+"
-    special_product = Mock()
-    special_product.sku = special_sku
-    special_product.name = "SpecialSKU"
-    special_product.stock = 3
-    manager.add_product(special_product)
-    assert special_sku in manager.products
-    assert manager.products[special_sku].name == "SpecialSKU"
+    assert manager.products[long_sku] is long_sku_product
+    mock_logger.info.assert_called_once_with("Added product LongSKUProduct")
 
 
-def test_add_product_error_cases():
-    """Adding a product with a duplicate SKU or an invalid product should raise errors."""
+def test_add_product_error_cases(mock_logger):
+    """
+    Adding a product whose SKU already exists must raise ``InventoryError``.
+    """
     manager = InventoryManager()
 
-    # First add a product with a given SKU
-    original = Mock()
-    original.sku = "DUP001"
-    original.name = "Original"
-    original.stock = 5
-    manager.add_product(original)
+    # First product  should be added without issue.
+    first_product = Mock()
+    first_product.sku = "DUPLICATE"
+    first_product.name = "First"
+    first_product.stock = 3
+    first_product.add_stock = Mock()
+    manager.add_product(first_product)
 
-    # Attempt to add another product with the same SKU  should raise InventoryError
-    duplicate = Mock()
-    duplicate.sku = "DUP001"
-    duplicate.name = "Duplicate"
-    duplicate.stock = 1
-    with pytest.raises(InventoryError):
-        manager.add_product(duplicate)
+    # Second product with the same SKU  should raise.
+    second_product = Mock()
+    second_product.sku = "DUPLICATE"
+    second_product.name = "Second"
+    second_product.stock = 7
+    second_product.add_stock = Mock()
 
-    # Attempt to add a product that lacks a `sku` attribute  should raise AttributeError
-    bad_product = Mock()
-    # Deliberately do NOT set `sku`
-    bad_product.name = "NoSKU"
-    bad_product.stock = 0
-    with pytest.raises(AttributeError):
-        manager.add_product(bad_product)
+    with pytest.raises(InventoryError) as exc_info:
+        manager.add_product(second_product)
 
-    # Attempt to add None as a product  should raise AttributeError
-    with pytest.raises(AttributeError):
-        manager.add_product(None)
+    # The exception message should contain the SKU.
+    assert "DUPLICATE" in str(exc_info.value)
+
+    # Ensure that the logger was *not* called a second time for the failing add.
+    # It should have been called exactly once from the successful addition.
+    mock_logger.info.assert_called_once_with("Added product First")

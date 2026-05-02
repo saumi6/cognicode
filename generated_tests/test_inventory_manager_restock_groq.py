@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: restock
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-04-03 10:25:40
+Generated on: 2026-05-01 00:11:47
 Source file: inventory_manager.py
 Function signature: def restock(self, sku: str, qty: int)
 """
@@ -18,28 +18,38 @@ sys.path.insert(0, r"C:\Users\gurav\prog\college\BE Proj\cognicode")
 # Import the function to be tested
 from test_repo.inventory_manager import InventoryManager
 
+import builtins
+from unittest.mock import MagicMock, Mock
+
 import pytest
-from unittest.mock import MagicMock
 
-# The class under test  adjust the import path to match your project layout.
-# For example, if the class lives in `myapp/inventory.py` you would write:
-# from myapp.inventory import InventoryManager
-from inventory_manager import InventoryManager  # <-- replace with the correct module name
+# The class under test is expected to live in a module called ``inventory_manager``.
+# Adjust the import path if the actual file name differs.
+from inventory_manager import InventoryManager
 
 
-def _make_mock_product(sku: str, initial_stock: int = 0):
+@pytest.fixture(autouse=True)
+def mock_logger(monkeypatch):
     """
-    Helper that creates a simple mock ``Product`` object with the attributes
-    required by ``InventoryManager`` (``sku``, ``stock`` and ``add_stock``).
+    Replace the modulelevel ``logger`` with a mock so that calls to
+    ``logger.info`` do not produce real log output and can be inspected.
+    """
+    fake_logger = Mock()
+    monkeypatch.setattr("inventory_manager.logger", fake_logger)
+    return fake_logger
+
+
+def _make_product(sku: str, stock: int = 0) -> MagicMock:
+    """
+    Helper that creates a ``Product``like mock with the attributes used by
+    ``InventoryManager`` (``sku``, ``stock`` and ``add_stock``).
     """
     product = MagicMock()
     product.sku = sku
-    product.stock = initial_stock
-
+    product.stock = stock
+    # ``add_stock`` should modify ``stock`` like a real implementation would.
     def _add_stock(qty):
-        # emulate the real behaviour  increase the internal ``stock`` counter
         product.stock += qty
-
     product.add_stock.side_effect = _add_stock
     return product
 
@@ -47,95 +57,107 @@ def _make_mock_product(sku: str, initial_stock: int = 0):
 @pytest.mark.parametrize(
     "initial_stock, restock_qty, expected_stock",
     [
-        (0, 5, 5),          # simple addition
-        (10, 15, 25),       # adding to existing stock
-        (3, 0, 3),          # restocking zero does not change stock
-        (100, 1, 101),      # minimal positive increment
+        (10, 5, 15),      # normal increase
+        (0, 20, 20),      # restocking from zero
+        (100, 0, 100),    # restocking with zero (no change)
+        (5, -2, 3),       # negative qty  method does not guard against it
     ],
 )
-def test_restock_normal_cases(initial_stock, restock_qty, expected_stock):
+def test_restock_normal_cases(mock_logger, initial_stock, restock_qty, expected_stock):
     """
-    Normal usage: the product exists and ``qty`` is a nonnegative integer.
-    After calling ``restock`` the product's ``stock`` attribute should reflect
-    the added quantity.
+    Verify that ``restock`` correctly forwards the quantity to the product's
+    ``add_stock`` method and that the internal stock value reflects the change.
     """
     manager = InventoryManager()
     sku = "TESTSKU"
+    product = _make_product(sku, stock=initial_stock)
+    manager.products[sku] = product
 
-    # Insert a mock product into the manager's internal dict
-    manager.products[sku] = _make_mock_product(sku, initial_stock)
-
-    # Perform the operation under test
+    # Act
     manager.restock(sku, restock_qty)
 
-    # Verify that the stock was updated correctly
-    assert manager.products[sku].stock == expected_stock
-    # Ensure that ``add_stock`` was called exactly once with the right argument
-    manager.products[sku].add_stock.assert_called_once_with(restock_qty)
+    # Assert that ``add_stock`` was called exactly once with the supplied qty
+    product.add_stock.assert_called_once_with(restock_qty)
+
+    # The mock's sideeffect updates ``stock``  check the final value
+    assert product.stock == expected_stock
+
+    # Ensure a log entry was emitted
+    mock_logger.info.assert_called_once_with(f"Restocked {sku} by {restock_qty}")
 
 
-def test_restock_edge_cases():
+def test_restock_edge_cases(mock_logger):
     """
-    Edgecase scenarios:
-    * Restocking a SKU that does **not** exist  the method should silently do nothing.
-    * Restocking with a negative quantity  the mock ``add_stock`` will raise
-      ``ValueError`` (simulating a real implementation that forbids negative stock).
+    Edgecase tests:
+    * Restocking a SKU that does **not** exist  should be a noop.
+    * Restocking with a very large integer  should still call ``add_stock``.
     """
     manager = InventoryManager()
 
-    # 1 Nonexistent SKU  nothing should happen and no exception is raised
+    # 1 SKU not present
     missing_sku = "MISSING"
-    # No product is added to ``manager.products`` for this SKU
-    manager.restock(missing_sku, 10)  # should be a noop
-    assert missing_sku not in manager.products
+    manager.restock(missing_sku, 10)
 
-    # 2 Negative quantity  we configure the mock to raise on negative input
-    sku = "NEGSKU"
-    product = MagicMock()
-    product.sku = sku
-    product.stock = 20
+    # No product, therefore ``add_stock`` must never be called and no log entry.
+    mock_logger.info.assert_not_called()
 
-    def _add_stock(qty):
-        if qty < 0:
-            raise ValueError("Quantity cannot be negative")
-        product.stock += qty
-
-    product.add_stock.side_effect = _add_stock
+    # 2 Very large quantity
+    large_qty = 10**12
+    sku = "BIGSKU"
+    product = _make_product(sku, stock=0)
     manager.products[sku] = product
 
-    with pytest.raises(ValueError):
-        manager.restock(sku, -5)
+    manager.restock(sku, large_qty)
 
-    # Stock must remain unchanged after the failed restock attempt
-    assert product.stock == 20
-    # ``add_stock`` should have been called once (the call that raised)
-    product.add_stock.assert_called_once_with(-5)
+    product.add_stock.assert_called_once_with(large_qty)
+    assert product.stock == large_qty
+    mock_logger.info.assert_called_once_with(f"Restocked {sku} by {large_qty}")
 
 
-def test_restock_error_cases():
+def test_restock_error_cases(mock_logger):
     """
-    so we rely on the underlying ``Product.add_stock`` to raise when it receives
-    inappropriate data. Here we simulate that behaviour with a mock.
+    ``restock`` itself does not raise for bad input, but the underlying
+    ``Product.add_stock`` may. These tests ensure that such exceptions are
+    propagated correctly.
     """
     manager = InventoryManager()
     sku = "ERRSKU"
     product = MagicMock()
     product.sku = sku
-    product.stock = 0
 
-    # Simulate a typechecking error inside ``add_stock``
-    def _add_stock(qty):
+    # Simulate ``add_stock`` raising a ``ValueError`` when a nonint qty is used.
+    def raise_on_bad_qty(qty):
         if not isinstance(qty, int):
-            raise TypeError("Quantity must be an integer")
+            raise ValueError("Quantity must be an integer")
+        # otherwise behave normally
         product.stock += qty
 
-    product.add_stock.side_effect = _add_stock
+    product.add_stock.side_effect = raise_on_bad_qty
     manager.products[sku] = product
 
-    # Passing a string instead of an int should propagate a TypeError
-    with pytest.raises(TypeError):
-        manager.restock(sku, "ten")
+    # ---- invalid qty type -------------------------------------------------
+    with pytest.raises(ValueError):
+        manager.restock(sku, "not-an-int")
 
-    # Ensure that the stock has not been modified
-    assert product.stock == 0
-    product.add_stock.assert_called_once_with("ten")
+    # ``add_stock`` should have been called with the bad value before raising.
+    product.add_stock.assert_called_once_with("not-an-int")
+    # No log entry should be made because the exception aborts the method.
+    mock_logger.info.assert_not_called()
+
+    # Reset mock for the next scenario
+    product.add_stock.reset_mock()
+    mock_logger.info.reset_mock()
+
+    # ---- negative qty that the product explicitly rejects -----------------
+    def reject_negative(qty):
+        if qty < 0:
+            raise ValueError("Negative restock not allowed")
+        product.stock += qty
+
+    product.add_stock.side_effect = reject_negative
+
+    with pytest.raises(ValueError):
+        manager.restock(sku, -5)
+
+    product.add_stock.assert_called_once_with(-5)
+    mock_logger.info.assert_not_called()

@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: __init__
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-04-03 04:11:01
+Generated on: 2026-05-01 00:10:06
 Source file: logger.py
 Function signature: def __init__(self, name: str)
 """
@@ -20,10 +20,10 @@ from test_repo.logger import Logger
 
 import pytest
 
-# Adjust the import path to match the location of the Logger class.
-# For example, if the class is defined in `logger.py` in the same directory,
-# the following import works.  Change it if the module name is different.
-from logger import Logger
+# The Logger class lives in the ``test_repo.logger`` module (the file name is
+# ``logger.py`` without the ``.py`` extension).  Import it using the full import
+# path so that the test runner can locate it correctly.
+from test_repo.logger import Logger
 
 
 @pytest.mark.parametrize(
@@ -32,55 +32,60 @@ from logger import Logger
         ("app", "app"),
         ("MyLogger", "MyLogger"),
         ("", ""),                         # empty string  still a valid name
-        ("", ""),                  # unicode characters
-        ("a" * 1024, "a" * 1024),        # long string (1KB)
+        ("   spaced   ", "   spaced   "), # leading/trailing spaces are kept
+        ("", ""),               # unicode / emoji characters
+        ("a" * 1024, "a" * 1024),         # long string (1KB)
     ],
 )
 def test___init___normal_cases(name_input, expected_name):
-    """Verify that the Logger stores the provided name unchanged for typical inputs."""
+    """
+    Normal usage of ``Logger.__init__``  the provided ``name`` should be stored
+    unchanged on the instance.
+    """
     logger = Logger(name_input)
-    assert hasattr(logger, "name"), "Logger instance should have a `name` attribute"
-    assert logger.name == expected_name, "The stored name should match the input value"
+    assert hasattr(logger, "name"), "Logger instance should have a ``name`` attribute"
+    assert logger.name == expected_name
 
 
 def test___init___edge_cases():
-    """Test boundary and edgecase values for the `name` argument."""
-    # 1. Whitespaceonly name
-    whitespace_name = "   \t\n"
-    logger_ws = Logger(whitespace_name)
-    assert logger_ws.name == whitespace_name
+    """
+    Edgecase values for the ``name`` argument.
+    """
+    # 0length string (already covered in normal cases, but we repeat for clarity)
+    logger_empty = Logger("")
+    assert logger_empty.name == ""
 
-    # 2. Name that looks like a number but is a string
-    numeric_string = "12345"
-    logger_num = Logger(numeric_string)
-    assert logger_num.name == numeric_string
-
-    # 3. Very long name (10KB)
+    # Very long string (10KB)  ensure the attribute can hold large data
     long_name = "x" * 10_240
     logger_long = Logger(long_name)
     assert logger_long.name == long_name
     assert len(logger_long.name) == 10_240
 
-    # 4. Name containing control characters
-    control_name = "log\x00name\x1F"
-    logger_ctrl = Logger(control_name)
-    assert logger_ctrl.name == control_name
+    # String subclass  ``isinstance`` should still be ``str`` and the value stored
+    class MyStr(str):
+        pass
+
+    subclass_name = MyStr("subclass")
+    logger_sub = Logger(subclass_name)
+    assert isinstance(logger_sub.name, str)
+    assert logger_sub.name == "subclass"
 
 
 def test___init___error_cases():
-    """Check that incorrect usage of the constructor raises the appropriate Python errors."""
-    # 1. Missing required positional argument
+    """
+    Error cases for ``Logger.__init__``  calling the method with an incorrect
+    signature should raise ``TypeError``.
+    """
+    # Missing the required ``name`` argument
     with pytest.raises(TypeError):
-        Logger()                     # type: ignore[arg-type]
+        Logger.__init__(Logger)  # ``self`` is supplied implicitly, but ``name`` is missing
 
-    # 2. Too many positional arguments
+    # Providing too many positional arguments
     with pytest.raises(TypeError):
-        Logger("valid_name", "extra_arg")   # type: ignore[arg-type]
+        Logger("first", "second")  # ``__init__`` expects only one positional argument after ``self``
 
-    # 3. Passing a nonstring that cannot be represented (e.g., a bytes object)
-    #    The implementation does not enforce type checking, so this should *not* raise.
-    #    We include it here to demonstrate that the error case is limited to signature misuse.
-    #    (If future validation is added, this test will start failing, signalling a change.)
-    with pytest.raises(TypeError):
-        # Force a TypeError by calling the unbound __init__ directly with a wrong `self`.
-        Logger.__init__(None, "name")  # type: ignore[arg-type]
+    # Supplying ``None`` as the name is technically allowed (it will be stored as ``None``),
+    # but if the implementation later expects a string, this is a logical error.
+    # Here we only verify that the constructor itself does **not** raise.
+    logger_none = Logger(None)  # should succeed
+    assert logger_none.name is None

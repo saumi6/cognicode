@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: check_stock
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-04-03 10:25:32
+Generated on: 2026-05-01 00:11:40
 Source file: inventory_manager.py
 Function signature: def check_stock(self, sku: str, qty: int) -> bool
 """
@@ -19,98 +19,109 @@ sys.path.insert(0, r"C:\Users\gurav\prog\college\BE Proj\cognicode")
 from test_repo.inventory_manager import InventoryManager
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import Mock
 
-# Import the class under test  adjust the import path to match your project layout.
-# For example, if the class lives in `inventory_manager.py`:
-# from inventory_manager import InventoryManager
-# Here we assume it is already importable as shown in the prompt.
-from inventory_manager import InventoryManager
-
-
-def _make_product(sku: str, stock: int) -> MagicMock:
-    """
-    Helper that creates a minimal ``Product`` mock with the attributes
-    accessed by :meth:`InventoryManager.check_stock`.
-    """
-    product = MagicMock()
-    product.sku = sku
-    product.stock = stock
-    # ``name`` is used only by ``add_product``  not needed here, but we set it
-    # to keep the mock realistic.
-    product.name = f"Product-{sku}"
-    return product
+# The InventoryManager class lives in the ``test_repo.inventory_manager`` module.
+# Import it using the full absolute import path as required by the guidelines.
+from test_repo.inventory_manager import InventoryManager
 
 
 @pytest.mark.parametrize(
     "sku, stock, qty, expected",
     [
-        ("A001", 10, 5, True),   # sufficient stock
-        ("B002", 3, 3, True),    # exact match
-        ("C003", 0, 1, False),   # no stock
-        ("D004", 5, 10, False),  # insufficient stock
+        ("SKU001", 10, 5, True),   # enough stock
+        ("SKU002", 3, 5, False),   # not enough stock
+        ("SKU003", 7, 7, True),    # exact match
+        ("SKU004", 0, 1, False),   # zero stock, request >0
+        ("SKU005", 100, 0, True),  # request zero items  always true if product exists
     ],
 )
-def test_check_stock_normal_cases(sku, stock, qty, expected):
+def test_check_stock_normal_cases(sku: str, stock: int, qty: int, expected: bool):
     """
-    Normal operation: the SKU exists and the comparison ``stock >= qty`` is
-    evaluated correctly.
+    Normal behaviour of ``check_stock``:
+    - Returns ``True`` when the product exists and its stock is greater than or equal to ``qty``.
+    - Returns ``False`` when the product exists but stock is insufficient.
     """
     manager = InventoryManager()
-    manager.products[sku] = _make_product(sku, stock)
 
+    # Create a mock ``Product`` with the required attributes.
+    product = Mock()
+    product.sku = sku
+    product.stock = stock
+    product.name = f"Product {sku}"
+
+    # Register the product in the manager.
+    manager.add_product(product)
+
+    # Call the method under test.
     result = manager.check_stock(sku, qty)
+
     assert result is expected
 
 
 def test_check_stock_edge_cases():
     """
-    Edgecase scenarios such as zero/negative quantities, missing SKUs and
-    very large numbers.
+    Edgecase handling for ``check_stock``:
+    - ``qty`` equal to zero should succeed when the product exists.
+    - Negative ``qty`` should also succeed because any nonnegative stock is >= negative.
+    - Missing SKU should return ``False`` regardless of ``qty``.
     """
     manager = InventoryManager()
 
-    # 1. Zero quantity  should always be True if the product exists.
-    sku_zero = "Z001"
-    manager.products[sku_zero] = _make_product(sku_zero, stock=0)
-    assert manager.check_stock(sku_zero, 0) is True
+    # Product with zero stock.
+    zero_stock_product = Mock()
+    zero_stock_product.sku = "ZERO"
+    zero_stock_product.stock = 0
+    zero_stock_product.name = "Zero Stock"
+    manager.add_product(zero_stock_product)
 
-    # 2. Negative quantity  ``stock >= qty`` is True for any nonnegative stock.
-    sku_negative = "N001"
-    manager.products[sku_negative] = _make_product(sku_negative, stock=0)
-    assert manager.check_stock(sku_negative, -5) is True
+    # Existing product, negative quantity request.
+    neg_qty_product = Mock()
+    neg_qty_product.sku = "NEG"
+    neg_qty_product.stock = 5
+    neg_qty_product.name = "Negative Qty"
+    manager.add_product(neg_qty_product)
 
-    # 3. SKU not present  should return False regardless of qty.
-    assert manager.check_stock("NON_EXISTENT", 1) is False
+    # 1. Zero quantity request  should be True because product exists.
+    assert manager.check_stock("ZERO", 0) is True
 
-    # 4. Very large quantity compared to stock.
-    sku_large = "L001"
-    manager.products[sku_large] = _make_product(sku_large, stock=1_000_000)
-    assert manager.check_stock(sku_large, 2_000_000) is False
+    # 2. Negative quantity request  should be True (stock >= negative number).
+    assert manager.check_stock("NEG", -3) is True
 
-    # 5. Stock exactly equals the requested quantity.
-    sku_exact = "E001"
-    manager.products[sku_exact] = _make_product(sku_exact, stock=42)
-    assert manager.check_stock(sku_exact, 42) is True
+    # 3. SKU not present  should be False for any qty.
+    assert manager.check_stock("MISSING", 10) is False
+    assert manager.check_stock("MISSING", 0) is False
 
 
 def test_check_stock_error_cases():
     """
-    ``check_stock`` performs a numeric comparison, so a nonnumeric ``qty``
-    triggers a ``TypeError``.
+    ``check_stock`` should raise a ``TypeError`` when ``qty`` is not comparable
+    with the product's integer stock (e.g., a string). Other malformed inputs
+    that do not trigger a comparison simply return ``False``.
     """
     manager = InventoryManager()
-    sku = "ERR001"
-    manager.products[sku] = _make_product(sku, stock=5)
 
-    # ``qty`` as a string  comparison with int raises TypeError.
-    with pytest.raises(TypeError):
-        manager.check_stock(sku, "5")
+    product = Mock()
+    product.sku = "ERR"
+    product.stock = 5
+    product.name = "Error Product"
+    manager.add_product(product)
 
-    # ``qty`` as ``None``  also raises TypeError.
+    # ``qty`` as a string  the ``>=`` comparison will raise ``TypeError``.
     with pytest.raises(TypeError):
-        manager.check_stock(sku, None)
+        manager.check_stock("ERR", "five")
 
-    # ``qty`` as a list  raises TypeError as well.
+    # ``sku`` as ``None``  ``dict.get`` will simply return ``None`` and the method
+    # returns ``False`` (no exception expected).
+    assert manager.check_stock(None, 1) is False
+
+    # ``qty`` as ``None``  also raises ``TypeError`` because ``>=`` cannot compare.
     with pytest.raises(TypeError):
-        manager.check_stock(sku, [1, 2, 3])
+        manager.check_stock("ERR", None)
+These three tests cover:
+
+1. **Normal cases** with a variety of stock/quantity combinations using `@pytest.mark.parametrize`.
+2. **Edge cases** such as zero and negative quantities and missing SKUs.
+3. **Error cases** where inappropriate argument types cause a `TypeError`, verified with `pytest.raises`.
+
+All tests instantiate `InventoryManager`, mock the required `Product` objects, and contain clear docstrings for readability.

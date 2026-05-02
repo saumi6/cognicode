@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: __init__
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-04-03 03:52:15
+Generated on: 2026-05-01 00:13:00
 Source file: user_service.py
 Function signature: def __init__(self)
 """
@@ -19,80 +19,85 @@ sys.path.insert(0, r"C:\Users\gurav\prog\college\BE Proj\cognicode")
 from test_repo.user_service import UserService
 
 import pytest
-from user_service import UserService  # the module that contains the class
+from unittest.mock import MagicMock
+
+# The UserService class lives in the module ``test_repo.user_service``.
+# Import it using the full absolute import path as required by the guidelines.
+from test_repo.user_service import UserService
 
 
 @pytest.mark.parametrize(
-    "prepopulate, expected_len",
+    "description",
     [
-        (False, 0),   # fresh instance, no users added
-        (True, 0),    # users added then __init__ called again  should be cleared
+        ("basic instantiation"),
+        ("reinstantiation after previous use"),
+        ("instantiation inside a fixturelike scope"),
     ],
 )
-def test___init___normal_cases(prepopulate, expected_len):
+def test___init___normal_cases(description):
     """
     Normal cases for ``UserService.__init__``.
 
-    * When the service is created fresh the ``users`` dict must be empty.
-    * When the service already contains entries and ``__init__`` is called
-      explicitly again, the dict must be cleared.
+    We instantiate the class and verify that the attribute exists, is a ``dict`` and is empty.
     """
-    # instantiate the service (this calls __init__ automatically)
+    # Act  instantiate the service (which calls __init__ automatically)
     service = UserService()
 
-    # optionally add a dummy user before calling __init__ again
-    if prepopulate:
-        # we do not need a real ``User`` object  a simple placeholder works
-        service.users["dummy_id"] = {"name": "Dummy", "email": "dummy@example.com"}
-
-    # call __init__ explicitly to reset the internal state
-    service.__init__()
-
-    # after resetting, the ``users`` attribute must be an empty dict
-    assert isinstance(service.users, dict)
-    assert len(service.users) == expected_len
-    assert service.users == {}  # exact content check
+    # Assert  the ``users`` attribute is present, is a dict and starts empty
+    assert hasattr(service, "users"), "UserService should have a 'users' attribute after init"
+    assert isinstance(service.users, dict), "'users' should be a dict"
+    assert len(service.users) == 0, "'users' dict should be empty on fresh init"
 
 
 def test___init___edge_cases():
     """
-    Edgecase tests for ``UserService.__init__``.
+    Edge cases for ``UserService.__init__``.
 
-    * Verify that a very large number of preexisting users are all removed.
-    * Ensure that the ``users`` attribute is a *new* dictionary object after reset.
+    1. When the service already contains data, calling ``__init__`` again should reset it.
+    2. Calling ``__init__`` multiple times in a row must keep the dict empty.
     """
+    # Arrange  create a service and manually inject a fake user entry
     service = UserService()
+    fake_user = MagicMock()
+    fake_user.id = "uid-123"
+    service.users[fake_user.id] = fake_user
+    assert len(service.users) == 1  # sanity check that the injection worked
 
-    # Populate the service with a large number of dummy entries
-    for i in range(10_000):
-        service.users[f"id_{i}"] = {"name": f"user{i}", "email": f"user{i}@example.com"}
-
-    # Keep a reference to the original dict object
-    original_dict = service.users
-
-    # Reset the service
+    # Act  explicitly call __init__ again to reset internal state
     service.__init__()
 
-    # The dict should be empty
-    assert service.users == {}
-    assert len(service.users) == 0
+    # Assert  the internal dict has been cleared
+    assert isinstance(service.users, dict), "'users' should still be a dict after reinit"
+    assert len(service.users) == 0, "'users' dict should be empty after reinit"
 
-    # The dict should be a *new* object, not the one we populated before
-    assert service.users is not original_dict
+    # Act  call __init__ a second time to ensure idempotency
+    service.__init__()
+
+    # Assert  still empty
+    assert len(service.users) == 0, "Repeated __init__ calls must leave 'users' empty"
 
 
 def test___init___error_cases():
     """
-    Errorcase tests for ``UserService.__init__``.
+    Error cases for ``UserService.__init__``.
 
-    positional or keyword arguments must raise ``TypeError``.
+    Supplying extra positional arguments or calling it with an invalid ``self`` should raise
+    ``TypeError`` or ``AttributeError`` respectively.
     """
+    # 1. Passing an extra argument should raise TypeError
     service = UserService()
-
-    # Passing a positional argument should raise TypeError
     with pytest.raises(TypeError):
-        service.__init__("unexpected positional arg")
+        # The bound method expects no extra arguments
+        service.__init__("unexpected_argument")
 
-    # Passing a keyword argument should also raise TypeError
-    with pytest.raises(TypeError):
-        service.__init__(unexpected="kwarg")
+    # 2. Calling the unbound function with ``None`` as ``self`` should raise AttributeError
+    #    because the implementation tries to assign to ``self.users``.
+    with pytest.raises(AttributeError):
+        UserService.__init__(None)
+
+    # 3. Calling the unbound function with an object that does not allow attribute assignment
+    class NoAttr:
+        __slots__ = ()  # prevents dynamic attribute creation
+
+    with pytest.raises(AttributeError):
+        UserService.__init__(NoAttr())

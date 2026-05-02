@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: get_user
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-04-03 03:52:30
+Generated on: 2026-05-01 00:13:27
 Source file: user_service.py
 Function signature: def get_user(self, user_id: str) -> User
 """
@@ -19,112 +19,128 @@ sys.path.insert(0, r"C:\Users\gurav\prog\college\BE Proj\cognicode")
 from test_repo.user_service import UserService
 
 import pytest
+import uuid
 from unittest.mock import MagicMock
 
-# A minimal standin for the real ``User`` model used by ``UserService``.
-class DummyUser:
-    """Simple user object with the attributes accessed by the service."""
-    _id_counter = 0
+# The module that contains UserService is assumed to be `test_repo.user_service`.
+# Adjust the import path if the actual file name differs.
+from test_repo.user_service import UserService
 
+
+# ----------------------------------------------------------------------
+# Helper: a very small standin for the real ``User`` model.
+# ----------------------------------------------------------------------
+class DummyUser:
+    """A minimal User replacement that mimics the real interface used by UserService."""
     def __init__(self, name: str, email: str):
-        DummyUser._id_counter += 1
-        self.id = f"user-{DummyUser._id_counter}"
         self.name = name
         self.email = email
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, DummyUser)
-            and self.id == other.id
-            and self.name == other.name
-            and self.email == other.email
-        )
+        # generate a deterministic but unique id for each instance
+        self.id = str(uuid.uuid4())
 
     def __repr__(self):
-        return f"<DummyUser id={self.id} name={self.name} email={self.email}>"
+        return f"<DummyUser id={self.id!r} name={self.name!r} email={self.email!r}>"
 
-# The class under test  we replace the real ``User`` with ``DummyUser`` via monkeypatch.
-# In a real test suite the import path would be something like
-# ``myproject.services.user_service.UserService``.  Here we assume the test file is
-# named ``test_user_service.py`` and the implementation lives in ``user_service.py``.
-# Adjust the path accordingly if the module name differs.
-from user_service import UserService  # type: ignore
+    def __eq__(self, other):
+        # Equality is based on the identifier  this mirrors typical ORM behaviour.
+        return isinstance(other, DummyUser) and self.id == other.id
 
 
+# ----------------------------------------------------------------------
+# Fixtures
+# ----------------------------------------------------------------------
 @pytest.fixture(autouse=True)
 def patch_user_class(monkeypatch):
     """
-    Replace the real ``User`` class used inside ``UserService.register`` with
-    ``DummyUser`` so that the service works without the actual model.
+    Replace the real ``User`` class with ``DummyUser`` for the duration of the tests.
+    This avoids any external dependencies (e.g., a database model) while keeping the
+    public contract of ``UserService`` intact.
     """
-    monkeypatch.setattr("user_service.User", DummyUser)
-    return
+    monkeypatch.setattr(
+        "test_repo.user_service.User",  # full absolute import path
+        DummyUser,
+        raising=True,
+    )
+    # No need to yield  the monkeypatch fixture will automatically undo the change.
+    
 
-
-def _populate_service_with_users(service: UserService, count: int):
-    """Helper that registers ``count`` dummy users and returns a list of them."""
-    users = []
-    for i in range(count):
-        user = service.register(name=f"User{i}", email=f"user{i}@example.com")
-        users.append(user)
-    return users
-
-
+# ----------------------------------------------------------------------
+# 1. Normal cases  retrieving users that have been registered.
+# ----------------------------------------------------------------------
 @pytest.mark.parametrize(
-    "lookup_id, expected_name",
+    "name,email",
     [
-        ("user-1", "User0"),
-        ("user-2", "User1"),
-        ("user-3", "User2"),
+        ("Alice", "alice@example.com"),
+        ("Bob", "bob@example.org"),
+        ("Charlie", "charlie@sample.net"),
     ],
 )
-def test_get_user_normal_cases(lookup_id, expected_name):
+def test_get_user_normal_cases(name, email):
     """
-    Normal behaviour: ``get_user`` should return the correct ``User`` instance
-    when the identifier exists in the internal dictionary.
+    After registering a user, ``get_user`` should return the exact same ``User`` instance
+    when queried with the generated identifier.
     """
     service = UserService()
-    # Populate the service with three users; their ids will be "user-1", "user-2", "user-3".
-    _populate_service_with_users(service, 3)
 
-    result = service.get_user(lookup_id)
+    # Register a user  this uses the patched DummyUser class.
+    created_user = service.register(name=name, email=email)
 
-    assert isinstance(result, DummyUser)
-    assert result.name == expected_name
-    assert result.id == lookup_id
+    # Retrieve the user by the id that was stored during registration.
+    fetched_user = service.get_user(created_user.id)
+
+    # The fetched object must be the same (by identity or by our __eq__ definition).
+    assert fetched_user == created_user
+    assert fetched_user.id == created_user.id
+    assert fetched_user.name == name
+    assert fetched_user.email == email
 
 
+# ----------------------------------------------------------------------
+# 2. Edge cases  handling of missing or unusual identifiers.
+# ----------------------------------------------------------------------
 def test_get_user_edge_cases():
     """
-    Edgecase handling:
-    * Looking up a nonexistent user should return ``None``.
-    * An empty string as an identifier should also return ``None``.
-    * When the service has no users at all, any lookup returns ``None``.
+    Verify behaviour when looking up identifiers that do not exist or are atypical.
     """
-    # Edge case 1  empty service
-    empty_service = UserService()
-    assert empty_service.get_user("any-id") is None
-
-    # Edge case 2  nonexistent id in a populated service
     service = UserService()
-    _populate_service_with_users(service, 2)  # ids: user-1, user-2
-    assert service.get_user("non-existent-id") is None
 
-    # Edge case 3  empty string as id
-    assert service.get_user("") is None
+    # 1  Lookup with an identifier that was never added  should return ``None``.
+    missing = service.get_user("nonexistent-id")
+    assert missing is None
+
+    # 2  Empty string as identifier  also not present, expect ``None``.
+    empty = service.get_user("")
+    assert empty is None
+
+    # 3  ``None`` as identifier  dict.get accepts ``None`` as a key, but we never stored one.
+    none_key = service.get_user(None)
+    assert none_key is None
+
+    # 4  Register a user and then query with a *different* but validlooking UUID.
+    user = service.register(name="Dana", email="dana@demo.com")
+    other_uuid = str(uuid.uuid4())
+    assert other_uuid != user.id
+    assert service.get_user(other_uuid) is None
 
 
+# ----------------------------------------------------------------------
+# 3. Error cases  passing values that cannot be used as dictionary keys.
+# ----------------------------------------------------------------------
 def test_get_user_error_cases():
     """
-    Error handling: ``dict.get`` raises ``TypeError`` when the key is unhashable.
-    Verify that ``get_user`` propagates this error for such inputs.
+    ``UserService.get_user`` ultimately calls ``dict.get``; passing an unhashable
+    object (e.g., a list) should raise a ``TypeError``.
     """
     service = UserService()
-    _populate_service_with_users(service, 1)
 
-    # Unhashable key (list) should raise TypeError
+    # Register a normal user so the internal dict is populated (not strictly required,
+    # but mirrors realistic usage).
+    _ = service.register(name="Eve", email="eve@sample.org")
+
+    # Attempt to use an unhashable key  this must raise ``TypeError``.
     with pytest.raises(TypeError):
-        service.get_user(["unhashable", "list"])
+        service.get_user(["this", "is", "a", "list"])
 
-    # ``None`` is hashable, so it should *not* raise but simply return None
-    assert service.get_user(None) is None
+    # Another unhashable example: a dict.
+    with pytest.raises(TypeError):
+        service.get_user({"key": "value"})

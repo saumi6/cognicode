@@ -173,6 +173,88 @@ def search_knowledge_base(q: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ====================================================================== #
+# --- Report Generation ---
+
+import datetime
+
+@app.get("/report/data")
+def get_report_data():
+    """Aggregate all metrics for PDF report generation."""
+    test_results = db.get_latest_results()
+    
+    total_files = len(engine.file_map)
+    passed_files = sum(1 for v in test_results.values() if v == 'PASSED')
+    failed_files = sum(1 for v in test_results.values() if v == 'FAILED')
+    
+    # Calculate coverage
+    total_coverage = 0
+    covered_files = 0
+    for path in engine.file_map.values():
+        m = db.get_metrics(path)
+        if m.get("coverage_percent", 0) > 0:
+            total_coverage += m["coverage_percent"]
+            covered_files += 1
+            
+    avg_coverage = round(total_coverage / covered_files, 1) if covered_files > 0 else 0.0
+
+    # Calculate Security
+    vulns = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "details": []}
+    if hasattr(engine, 'vulnerabilities'):
+        for node, file_vulns in engine.vulnerabilities.items():
+            for v in file_vulns:
+                sev = v.get("issue_severity", "LOW")
+                if sev in vulns:
+                    vulns[sev] += 1
+                vulns["details"].append({
+                    "file": node,
+                    "severity": sev,
+                    "issue": v.get("issue_text", ""),
+                    "line": v.get("line_number", 0)
+                })
+
+    # Sort blast radius
+    comp_scores = engine.complexity_scores if hasattr(engine, 'complexity_scores') else {}
+    sorted_blast = sorted(comp_scores.items(), key=lambda x: x[1], reverse=True)[:5]
+    
+    arch_violations = engine.architectural_violations if hasattr(engine, 'architectural_violations') else {}
+
+    # File details for detailed report
+    file_details = []
+    for node, path in engine.file_map.items():
+        m = db.get_metrics(path)
+        status = test_results.get(path, "UNTESTED")
+        if node in arch_violations:
+            status = "VIOLATION"
+            
+        file_details.append({
+            "name": node,
+            "path": path,
+            "status": status,
+            "coverage": m.get("coverage_percent", 0.0),
+            "flakiness": m.get("flakiness_rate", 0.0),
+            "complexity": comp_scores.get(node, 0)
+        })
+
+    # Sort file details alphabetically
+    file_details.sort(key=lambda x: x["name"])
+
+    return {
+        "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "summary": {
+            "total_files": total_files,
+            "passed_files": passed_files,
+            "failed_files": failed_files,
+            "avg_coverage": avg_coverage
+        },
+        "security": vulns,
+        "architecture": {
+            "top_blast_radius": [{"file": k, "score": v} for k, v in sorted_blast],
+            "violations": [{"source": k, "reason": v} for k, v in arch_violations.items()]
+        },
+        "file_details": file_details
+    }
+
+# ====================================================================== #
 # --- Test Integration ---
 
 @app.post("/tests/result")

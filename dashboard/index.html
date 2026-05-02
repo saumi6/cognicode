@@ -8,6 +8,7 @@
     <meta name="description" content="CogniCode multi-view dashboard for architectural analysis, test management, and developer intelligence.">
     <script src="https://unpkg.com/force-graph"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1141,9 +1142,12 @@
         <!-- ===== VIEW: QA Ledger ===== -->
         <div class="view-container" id="view-ledger">
 
-            <div class="view-header">
+            <div class="view-header" style="position: relative;">
                 <h2>📊 QA Ledger — Test History</h2>
                 <p>Track and audit every test run across your codebase.</p>
+                <button onclick="generatePDFReport()" id="pdf-report-btn" class="settings-save-btn" style="position: absolute; right: 40px; top: 30px; font-size: 0.9rem; padding: 10px 20px; display: flex; align-items: center; gap: 8px;">
+                    <span id="pdf-btn-icon">📥</span> <span id="pdf-btn-text">Generate Audit Report (PDF)</span>
+                </button>
             </div>
 
             <div class="ledger-content">
@@ -1291,7 +1295,7 @@
         </div>
 
         <!-- ===== VIEW: Knowledge Base ===== -->
-        <div class="view-container" id="view-knowledge" style="background:#0d1117; flex-direction: column; align-items:center;">
+        <div class="view-container" id="view-knowledge" style="background:#0d1117; flex-direction: column; align-items:center; overflow-y: auto;">
             <div style="max-width: 800px; width:100%; padding: 60px 20px;">
                 <h2 style="font-size:2rem; text-align:center; color:var(--text-color); margin-bottom:10px;">🧠 Semantic Knowledge Base</h2>
                 <p style="text-align:center; color:var(--text-muted); margin-bottom:40px;">Graph intelligence powered by Gemini & FAISS embeddings.</p>
@@ -1313,7 +1317,7 @@
         </div>
 
         <!-- ===== VIEW: Semantic Clones ===== -->
-        <div class="view-container" id="view-clones" style="background:#0d1117; flex-direction: column; align-items:center;">
+        <div class="view-container" id="view-clones" style="background:#0d1117; flex-direction: column; align-items:center; overflow-y: auto;">
             <div style="max-width: 800px; width:100%; padding: 60px 20px;">
                 <h2 style="font-size:2rem; text-align:center; color:var(--text-color); margin-bottom:10px;">🧬 Semantic Clone Detector</h2>
                 <p style="text-align:center; color:var(--text-muted); margin-bottom:40px;">Mathematically detect duplicated logic via FAISS and Google Gemini embeddings. Detects copy-pasted or structurally identical code even if variable names differ.</p>
@@ -2533,10 +2537,241 @@
         // Hydrate settings from localStorage on boot
         loadSettings();
 
+        // --- PDF Report Generation ---
+        async function generatePDFReport() {
+            const btnText = document.getElementById('pdf-btn-text');
+            const btnIcon = document.getElementById('pdf-btn-icon');
+            const originalText = btnText.innerText;
+            
+            try {
+                btnText.innerText = "Gathering Intelligence...";
+                btnIcon.innerText = "⏳";
+                
+                const baseUrl = document.getElementById('setting-api-url').value || 'http://localhost:8000';
+                const response = await fetch(`${baseUrl}/report/data`);
+                if (!response.ok) throw new Error("Failed to fetch report data");
+                const data = await response.json();
+                
+                btnText.innerText = "Rendering PDF...";
+                
+                // Populate the template
+                document.getElementById('pdf-gen-time').innerText = data.generated_at;
+                document.getElementById('pdf-total-files').innerText = data.summary.total_files;
+                document.getElementById('pdf-pass-rate').innerText = 
+                    ((data.summary.passed_files / (data.summary.passed_files + data.summary.failed_files || 1)) * 100).toFixed(1) + "%";
+                document.getElementById('pdf-coverage').innerText = data.summary.avg_coverage + "%";
+                
+                document.getElementById('pdf-sec-high').innerText = data.security.HIGH;
+                document.getElementById('pdf-sec-med').innerText = data.security.MEDIUM;
+                document.getElementById('pdf-sec-low').innerText = data.security.LOW;
+                
+                // Vulnerabilities table
+                const vulnTbody = document.getElementById('pdf-vuln-table');
+                if (data.security.details.length === 0) {
+                    vulnTbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:20px; color:#6e7681;">No vulnerabilities detected. 🛡️</td></tr>`;
+                } else {
+                    vulnTbody.innerHTML = data.security.details.map(v => `
+                        <tr>
+                            <td><span style="color: ${v.severity === 'HIGH' ? '#da3633' : v.severity === 'MEDIUM' ? '#d29922' : '#58a6ff'}; font-weight:bold;">${v.severity}</span></td>
+                            <td style="font-family:monospace;">${v.file}:${v.line}</td>
+                            <td>${v.issue}</td>
+                        </tr>
+                    `).join('');
+                }
+                
+                // Architecture violations
+                const archList = document.getElementById('pdf-arch-violations');
+                if (data.architecture.violations.length === 0) {
+                    archList.innerHTML = `<li style="color:#238636;">✅ No architectural boundary violations detected.</li>`;
+                } else {
+                    archList.innerHTML = data.architecture.violations.map(v => `
+                        <li style="margin-bottom:8px;"><strong>${v.source}</strong>: ${v.reason}</li>
+                    `).join('');
+                }
+                
+                // Blast radius
+                const blastList = document.getElementById('pdf-blast-radius');
+                blastList.innerHTML = data.architecture.top_blast_radius.map(b => `
+                        <li style="margin-bottom:8px;"><span style="display:inline-block; width:30px; font-weight:bold; color:#da3633;">${b.score}</span> <span style="font-family:monospace;">${b.file}</span></li>
+                    `).join('');
+                
+                // Detailed Module Diagnostics
+                const moduleTbody = document.getElementById('pdf-module-table');
+                moduleTbody.innerHTML = data.file_details.map(f => {
+                    let badgeColor = "#57606a";
+                    let badgeText = f.status;
+                    if (f.status === "PASSED") { badgeColor = "#238636"; }
+                    else if (f.status === "FAILED") { badgeColor = "#da3633"; }
+                    else if (f.status === "VIOLATION") { badgeColor = "#d29922"; }
+                    
+                    const covWidth = Math.min(100, Math.max(0, f.coverage));
+                    const covColor = covWidth >= 80 ? "#238636" : covWidth >= 50 ? "#d29922" : "#da3633";
+                    
+                    return `
+                        <tr>
+                            <td style="font-family:monospace; padding: 10px; border-bottom: 1px solid #d0d7de;">${f.name}</td>
+                            <td style="padding: 10px; border-bottom: 1px solid #d0d7de;">
+                                <span style="background:${badgeColor}; color:white; padding: 2px 6px; border-radius: 12px; font-size: 0.75rem; font-weight:bold;">${badgeText}</span>
+                            </td>
+                            <td style="padding: 10px; border-bottom: 1px solid #d0d7de;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-weight:bold; width:40px; text-align:right;">${covWidth}%</span>
+                                    <div style="flex:1; height: 8px; background: #e1e4e8; border-radius: 4px; overflow:hidden;">
+                                        <div style="width: ${covWidth}%; height: 100%; background: ${covColor};"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td style="padding: 10px; border-bottom: 1px solid #d0d7de; text-align:center;">
+                                <span style="color:#57606a;">${f.flakiness}%</span>
+                            </td>
+                            <td style="padding: 10px; border-bottom: 1px solid #d0d7de; text-align:center; font-weight:bold; color:#24292f;">
+                                ${f.complexity}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+                
+                // Trigger HTML2PDF
+                const element = document.getElementById('pdf-report-template');
+                element.style.display = 'block'; // Make it visible for rendering
+                
+                const opt = {
+                    margin:       10,
+                    filename:     `CogniCode_Audit_Report_${new Date().toISOString().split('T')[0]}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true, logging: false },
+                    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+                
+                await html2pdf().set(opt).from(element).save();
+                
+                element.style.display = 'none'; // Hide it again
+                
+                btnIcon.innerText = "✅";
+                btnText.innerText = "Downloaded!";
+                setTimeout(() => {
+                    btnIcon.innerText = "📥";
+                    btnText.innerText = originalText;
+                }, 3000);
+                
+            } catch (err) {
+                console.error(err);
+                btnIcon.innerText = "❌";
+                btnText.innerText = "Error generating PDF";
+                setTimeout(() => {
+                    btnIcon.innerText = "📥";
+                    btnText.innerText = originalText;
+                }, 3000);
+            }
+        }
+
         fetchGraph();
         setInterval(() => fetchGraph(), 2000);
 
     </script>
+    
+    <!-- PDF Report Template (Hidden, only used for html2pdf rendering) -->
+    <div id="pdf-report-template" style="display: none; padding: 20px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #24292f; background: white; width: 700px; box-sizing: border-box;">
+        <!-- Cover Page -->
+        <div style="text-align: center; padding: 100px 20px 150px 20px; border-bottom: 2px solid #d0d7de;">
+            <h1 style="font-size: 3rem; margin-bottom: 10px; color: #0969da;">CogniCode</h1>
+            <h2 style="font-size: 1.5rem; color: #57606a; font-weight: 400;">Automated Intelligence & Quality Audit</h2>
+            <p style="margin-top: 50px; font-size: 1rem; color: #57606a;">Generated on: <strong id="pdf-gen-time"></strong></p>
+        </div>
+        
+        <!-- Page Break -->
+        <div class="html2pdf__page-break"></div>
+        
+        <!-- Executive Summary -->
+        <div style="padding: 20px 0;">
+            <h2 style="border-bottom: 1px solid #d0d7de; padding-bottom: 10px; color: #24292f;">1. Executive Summary</h2>
+            <div style="display: flex; gap: 20px; margin-top: 20px;">
+                <div style="flex: 1; padding: 20px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; text-align: center;">
+                    <div style="font-size: 2rem; font-weight: bold; color: #0969da;" id="pdf-total-files">-</div>
+                    <div style="font-size: 0.9rem; color: #57606a;">Files Analyzed</div>
+                </div>
+                <div style="flex: 1; padding: 20px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; text-align: center;">
+                    <div style="font-size: 2rem; font-weight: bold; color: #2da44e;" id="pdf-pass-rate">-</div>
+                    <div style="font-size: 0.9rem; color: #57606a;">Test Pass Rate</div>
+                </div>
+                <div style="flex: 1; padding: 20px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; text-align: center;">
+                    <div style="font-size: 2rem; font-weight: bold; color: #8250df;" id="pdf-coverage">-</div>
+                    <div style="font-size: 0.9rem; color: #57606a;">Avg Coverage</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Security Audit -->
+        <div style="padding: 20px 0;">
+            <h2 style="border-bottom: 1px solid #d0d7de; padding-bottom: 10px; color: #24292f;">2. Security Audit</h2>
+            <div style="display: flex; gap: 20px; margin-top: 20px; margin-bottom: 20px;">
+                <div style="flex: 1; text-align: center;"><span style="font-size: 1.5rem; font-weight: bold; color: #cf222e;" id="pdf-sec-high">-</span><br>High Severity</div>
+                <div style="flex: 1; text-align: center;"><span style="font-size: 1.5rem; font-weight: bold; color: #d4a72c;" id="pdf-sec-med">-</span><br>Medium Severity</div>
+                <div style="flex: 1; text-align: center;"><span style="font-size: 1.5rem; font-weight: bold; color: #0969da;" id="pdf-sec-low">-</span><br>Low Severity</div>
+            </div>
+            
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                <thead>
+                    <tr style="background: #f6f8fa; border-bottom: 2px solid #d0d7de;">
+                        <th style="padding: 10px; text-align: left;">Severity</th>
+                        <th style="padding: 10px; text-align: left;">File:Line</th>
+                        <th style="padding: 10px; text-align: left;">Issue Description</th>
+                    </tr>
+                </thead>
+                <tbody id="pdf-vuln-table">
+                    <!-- Injected -->
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Page Break -->
+        <div class="html2pdf__page-break"></div>
+        
+        <!-- Architectural Health -->
+        <div style="padding: 20px 0;">
+            <h2 style="border-bottom: 1px solid #d0d7de; padding-bottom: 10px; color: #24292f;">3. Architectural Health</h2>
+            
+            <h3 style="color: #57606a; margin-top: 20px;">Boundary Violations</h3>
+            <ul id="pdf-arch-violations" style="background: #fff8c5; border: 1px solid #e8d011; padding: 20px 20px 20px 40px; border-radius: 6px;">
+                <!-- Injected -->
+            </ul>
+            
+            <h3 style="color: #57606a; margin-top: 30px;">Highest Blast Radius Vectors</h3>
+            <p style="font-size: 0.9rem; color: #57606a;">The following modules act as critical load-bearing pillars in the architecture. Changes here have the highest probability of causing downstream regressions.</p>
+            <ul id="pdf-blast-radius" style="list-style-type: none; padding: 0; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 20px;">
+                <!-- Injected -->
+            </ul>
+        </div>
+        
+        <!-- Page Break -->
+        <div class="html2pdf__page-break"></div>
+        
+        <!-- Module Level Diagnostics -->
+        <div style="padding: 20px 0;">
+            <h2 style="border-bottom: 1px solid #d0d7de; padding-bottom: 10px; color: #24292f;">4. Module Level Diagnostics</h2>
+            <p style="font-size: 0.9rem; color: #57606a;">Comprehensive breakdown of every tracked file, its QA status, coverage progression, flakiness rate, and graph complexity (Blast Radius).</p>
+            
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 20px; table-layout: fixed; word-wrap: break-word;">
+                <thead>
+                    <tr style="background: #f6f8fa; border-bottom: 2px solid #d0d7de;">
+                        <th style="padding: 10px; text-align: left; width: 30%;">Module</th>
+                        <th style="padding: 10px; text-align: left; width: 15%;">Status</th>
+                        <th style="padding: 10px; text-align: left; width: 30%;">Test Coverage</th>
+                        <th style="padding: 10px; text-align: center; width: 10%;">Flakiness</th>
+                        <th style="padding: 10px; text-align: center; width: 15%;">Blast Radius</th>
+                    </tr>
+                </thead>
+                <tbody id="pdf-module-table">
+                    <!-- Injected -->
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Footer -->
+        <div style="text-align: center; padding-top: 50px; color: #8c959f; font-size: 0.8rem;">
+            Generated automatically by CogniCode Developer Intelligence Platform.
+        </div>
+    </div>
 </body>
 
 </html>

@@ -1,7 +1,7 @@
 """
 Auto-generated test cases for function: register
 Generated using: Groq LLM (openai/gpt-oss-120b)
-Generated on: 2026-04-03 03:52:24
+Generated on: 2026-05-01 00:13:09
 Source file: user_service.py
 Function signature: def register(self, name: str, email: str) -> User
 """
@@ -21,114 +21,126 @@ from test_repo.user_service import UserService
 import pytest
 from unittest.mock import MagicMock
 
-# The module that contains the implementation is assumed to be named ``user_service``.
-# Adjust the import path if the actual module name differs.
-from user_service import UserService, User, ValidationError
-
-
-@pytest.fixture(autouse=True)
-def mock_logger(monkeypatch):
-    """
-    Replace the modulelevel ``logger`` with a ``MagicMock`` so that
-    calls to ``logger.info`` do not produce real log output and can be
-    inspected in the tests.
-    """
-    mock = MagicMock()
-    # ``user_service`` is the absolute import path of the file that defines
-    # ``UserService`` (i.e. the file you are testing).
-    monkeypatch.setattr("user_service.logger", mock)
-    return mock
+# The implementation lives in ``test_repo/user_service.py``.
+# Import the public objects we need for the tests.
+from test_repo.user_service import UserService, ValidationError, User
 
 
 @pytest.mark.parametrize(
     "name,email",
     [
         ("Alice", "alice@example.com"),
-        ("Bob", "bob@example.org"),
-        ("Charlie", "charlie123@sub.domain.co"),
+        ("Bob", "bob.smith@example.co.uk"),
+        ("Charlie Chaplin", "charlie+test@sub.domain.org"),
+        ("Dana", "dana_123@example.io"),
     ],
 )
-def test_register_normal_cases(name, email):
+def test_register_normal_cases(monkeypatch, name, email):
     """
-    Normal registration scenarios:
-    * a new user with a unique email address is created,
-    * the returned ``User`` instance contains the supplied data,
-    * the user is stored inside ``UserService.users``,
-    * a log entry is emitted.
-    """
-    service = UserService()
+    Normal registration scenarios.
 
-    # Act
+    For each (name, email) pair we expect:
+    * a ``User`` instance is returned,
+    * the instance attributes match the inputs,
+    * the user is stored in ``UserService.users`` under its ``id``,
+    * a log entry is emitted via ``logger.info``.
+    """
+    # Arrange  create a fresh service and replace the logger with a mock.
+    service = UserService()
+    mock_logger = MagicMock()
+    monkeypatch.setattr("test_repo.user_service.logger", mock_logger)
+
+    # Act  register the user.
     user = service.register(name, email)
 
-    # Assert the returned object
+    # Assert  returned object type and attributes.
     assert isinstance(user, User)
     assert user.name == name
     assert user.email == email
+    # The user must be stored in the internal dict keyed by its id.
     assert user.id in service.users
-
-    # The stored user must be the same instance
     assert service.users[user.id] is user
-
-    # Verify that a log call was made (the fixture replaces logger with a mock)
-    from user_service import logger  # reimport to get the patched object
-    logger.info.assert_called_once_with(f"User registered: {email}")
+    # The logger should have been called exactly once with the expected message.
+    mock_logger.info.assert_called_once_with(f"User registered: {email}")
 
 
-def test_register_edge_cases():
+def test_register_edge_cases(monkeypatch):
     """
-    Edgecase registrations:
-    * empty name is allowed (the service does not validate it),
-    * very long email strings are accepted,
-    * email addresses that differ only by case are treated as distinct.
+    Edgecase registrations.
+
+    Covers:
+    * empty name,
+    * extremely long name,
+    * email with unusual but valid characters,
+    * email containing uppercase letters (should be stored asis).
     """
     service = UserService()
+    mock_logger = MagicMock()
+    monkeypatch.setattr("test_repo.user_service.logger", mock_logger)
 
-    # 1. Empty name
+    # 1. Empty name  still allowed by the current implementation.
     empty_name_user = service.register("", "emptyname@example.com")
     assert empty_name_user.name == ""
     assert empty_name_user.email == "emptyname@example.com"
+    assert empty_name_user.id in service.users
 
-    # 2. Very long email (200 characters before the @)
-    long_local = "a" * 200
-    long_email = f"{long_local}@example.com"
-    long_email_user = service.register("LongEmail", long_email)
-    assert long_email_user.email == long_email
-    assert len(long_email_user.email) > 200
+    # 2. Very long name (200 characters).
+    long_name = "L" * 200
+    long_name_user = service.register(long_name, "longname@example.com")
+    assert long_name_user.name == long_name
+    assert long_name_user.email == "longname@example.com"
+    assert long_name_user.id in service.users
 
-    # 3. Casesensitive email handling
-    lower = service.register("CaseTest", "case@example.com")
-    upper = service.register("CaseTest2", "CASE@example.com")
-    assert lower.email != upper.email
-    assert lower.email == "case@example.com"
-    assert upper.email == "CASE@example.com"
-    # Both users must be present
-    assert lower.id in service.users and upper.id in service.users
+    # 3. Email with plus, dots and subdomains.
+    complex_email = "first.last+category@sub.mail.example-domain.com"
+    complex_user = service.register("Complex Email", complex_email)
+    assert complex_user.email == complex_email
+    assert complex_user.name == "Complex Email"
+    assert complex_user.id in service.users
+
+    # 4. Uppercase email  the service does not normalise case, so it should be stored unchanged.
+    upper_email = "UPPERCASE@EXAMPLE.COM"
+    upper_user = service.register("Uppercase", upper_email)
+    assert upper_user.email == upper_email
+    assert upper_user.name == "Uppercase"
+    assert upper_user.id in service.users
+
+    # Verify that logger.info was called once per successful registration (4 times total).
+    assert mock_logger.info.call_count == 4
+    expected_calls = [
+        pytest.call(f"User registered: emptyname@example.com"),
+        pytest.call(f"User registered: longname@example.com"),
+        pytest.call(f"User registered: {complex_email}"),
+        pytest.call(f"User registered: {upper_email}"),
+    ]
+    mock_logger.info.assert_has_calls(expected_calls, any_order=False)
 
 
-def test_register_error_cases():
+def test_register_error_cases(monkeypatch):
     """
-    Error scenarios:
-    * registering a second user with an email that is already taken raises
-      ``ValidationError``,
-    * passing a nonstring email (e.g. ``None``) results in a ``TypeError``
-      because the equality check fails.
+    Error scenarios for ``UserService.register``.
+
+    * Registering a second user with an email that already exists must raise ``ValidationError``.
+    * Passing a nonstring type for ``email`` should raise a ``TypeError`` when the equality check is performed.
     """
     service = UserService()
-    # First registration succeeds
-    service.register("First", "duplicate@example.com")
+    mock_logger = MagicMock()
+    monkeypatch.setattr("test_repo.user_service.logger", mock_logger)
 
-    # 1. Duplicate email
+    # First registration succeeds.
+    first_user = service.register("First", "duplicate@example.com")
+    assert first_user.email == "duplicate@example.com"
+
+    # Attempt to register another user with the same email  expect ValidationError.
     with pytest.raises(ValidationError) as excinfo:
         service.register("Second", "duplicate@example.com")
     assert "Email taken" in str(excinfo.value)
 
-    # 2. Nonstring email (None)  the ``==`` comparison will raise a TypeError
-    with pytest.raises(TypeError):
-        service.register("BadEmail", None)
+    # The logger should have been called only for the successful first registration.
+    mock_logger.info.assert_called_once_with("User registered: duplicate@example.com")
 
-    # 3. Nonstring name (integer)  the ``User`` constructor may accept it,
-    #    but we ensure the service does not silently break; we expect a TypeError
-    #    when the ``User`` class tries to use the value as a string.
+    # Passing a nonstring email (e.g., an integer) triggers a TypeError during the equality comparison.
+    # The implementation does not explicitly check types, so Python will raise a TypeError when
+    # ``u.email == email`` is evaluated (comparing ``str`` to ``int``).
     with pytest.raises(TypeError):
-        service.register(12345, "intname@example.com")
+        service.register("InvalidEmail", 12345)  # type: ignore[arg-type]
